@@ -1,0 +1,106 @@
+:root{
+  --bg:#1a1a1a; --panel:#202020; --panel2:#171717; --line:rgba(0,240,208,.16);
+  --text:#b8fff5; --dim:#6f9b94; --faint:#456b65;
+  --usd:#00f0d0;        /* pôle dollar / carry actif (accent cyan signature) */
+  --yen:#ff6b9d;        /* pôle yen / risque de débouclage (prompt rose) */
+  --gold:#e0b341;       /* rendement / neutre (ambre terminal) */
+  --ok:#00f0d0;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono","Share Tech Mono",Menlo,Consolas,monospace;
+  --sans:var(--mono);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans)}
+body{-webkit-font-smoothing:antialiased;line-height:1.45}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:9;
+  background:repeating-linear-gradient(0deg, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,.10) 3px);
+  mix-blend-mode:multiply;opacity:.5}
+::selection{background:var(--usd);color:#0a0a0a}
+a{color:var(--usd);text-decoration:none}
+a:hover{background:var(--usd);color:#0a0a0a}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 20px 80px}
+
+/* En-tête tape */
+header.tape{display:flex;flex-wrap:wrap;align-items:baseline;gap:14px 22px;
+  border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:22px}
+.brand{font-weight:800;font-size:20px;letter-spacing:-.02em}
+.brand b{color:var(--yen)}
+.brand .v{color:var(--dim);font-weight:600}
+.tag{font-family:var(--mono);font-size:11.5px;color:var(--dim);letter-spacing:.02em}
+.pill{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim);
+  border:1px solid var(--line);border-radius:999px;padding:4px 10px;display:flex;gap:8px;align-items:center}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+.dot.live{background:var(--ok);box-shadow:0 0 0 0 rgba(0,240,208,.6);animation:p 2.4s infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 rgba(0,240,208,.55)}70%{box-shadow:0 0 0 6px rgba(0,240,208,0)}100%{box-shadow:0 0 0 0 rgba(0,240,208,0)}}
+
+/* KPI rangée */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:22px}
+.kpi{background:var(--panel);padding:16px 16px 14px}
+.kpi .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.kpi .val{font-family:var(--mono);font-size:28px;font-weight:600;margin-top:7px;letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums}
+.kpi .sub{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:4px;font-variant-numeric:tabular-nums}
+.up{color:var(--yen)} .down{color:var(--usd)} .flat{color:var(--dim)}
+
+h2{font-size:13px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dim);font-weight:600;margin:0 0 12px;display:flex;align-items:center;gap:10px}
+h2::before{content:"";width:18px;height:2px;background:var(--yen);display:inline-block}
+
+.grid2{display:grid;grid-template-columns:1.15fr .85fr;gap:18px;margin-bottom:26px}
+.grid2.rev{grid-template-columns:.85fr 1.15fr}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+.card .cap{font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:6px}
+
+/* Jauge d'attaque (positionnement) */
+.gauge{margin-top:6px}
+.gnum{font-family:var(--mono);font-size:34px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.gtag{display:inline-block;font-family:var(--mono);font-size:11px;padding:3px 9px;border-radius:5px;margin-left:10px;vertical-align:middle}
+.gtag.short{background:rgba(255,107,157,.14);color:var(--yen);border:1px solid rgba(255,107,157,.4)}
+.gtag.long{background:rgba(0,240,208,.14);color:var(--usd);border:1px solid rgba(0,240,208,.4)}
+.meterrow{margin-top:14px}
+.meterrow .ml{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:5px}
+.track{height:9px;background:var(--panel2);border-radius:6px;position:relative;overflow:hidden;border:1px solid var(--line)}
+.fill{height:100%;border-radius:6px;transition:width .6s ease}
+
+/* Barre de tension bipolaire (signature) */
+.tension{position:relative;height:64px;margin:10px 0 6px;border-radius:10px;overflow:hidden;
+  background:linear-gradient(90deg, rgba(0,240,208,.16), rgba(23,23,23,.2) 50%, rgba(255,107,157,.18));
+  border:1px solid var(--line)}
+.tcenter{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--faint)}
+.needle{position:absolute;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--text);
+  box-shadow:0 0 14px rgba(184,255,245,.5);transition:left .7s cubic-bezier(.2,.8,.2,1)}
+.tlabels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:4px}
+.tlabels .l{color:var(--usd)} .tlabels .r{color:var(--yen)}
+.verdict{font-family:var(--mono);font-size:12.5px;margin-top:12px;padding:10px 12px;border-radius:8px;
+  background:var(--panel2);border:1px solid var(--line);color:var(--text)}
+
+/* Calculateur */
+.calc label{display:block;font-family:var(--mono);font-size:11px;color:var(--dim);margin:12px 0 4px}
+.calc input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);
+  font-family:var(--mono);font-size:14px;padding:9px 11px;border-radius:7px;font-variant-numeric:tabular-nums}
+.calc input:focus{outline:none;border-color:var(--usd)}
+.calcgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+.out{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.out div{background:var(--panel2);padding:11px 13px}
+.out .ol{font-family:var(--mono);font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+.out .ov{font-family:var(--mono);font-size:18px;font-variant-numeric:tabular-nums;margin-top:3px}
+
+/* tableaux */
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th{color:var(--dim);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}
+td.r,th.r{text-align:right}
+
+svg{display:block;width:100%;height:auto}
+.chartcap{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px}
+
+.note{font-family:var(--mono);font-size:11.5px;color:var(--dim);line-height:1.7}
+.sources{columns:2;column-gap:30px;font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.sources p{margin:0 0 8px;break-inside:avoid}
+footer{margin-top:34px;border-top:1px solid var(--line);padding-top:16px;color:var(--faint);font-family:var(--mono);font-size:11px}
+.err{color:var(--yen);font-family:var(--mono);font-size:11.5px}
+@media(max-width:820px){
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .grid2,.grid2.rev{grid-template-columns:1fr}
+  .sources{columns:1}
+}

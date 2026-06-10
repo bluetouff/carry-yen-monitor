@@ -1,0 +1,28 @@
+# Secrets et configuration locale (ne JAMAIS committer)
+env
+.env
+*.env
+secrets*
+
+# Snapshot de production genere a l'execution.
+# On garde toutefois l'echantillon de demo web/data.json.
+data.json
+!web/data.json
+
+# Certificats et cles
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Systeme / editeurs
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/

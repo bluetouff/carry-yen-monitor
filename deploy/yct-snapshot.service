@@ -1,0 +1,43 @@
+[Unit]
+Description=YCT - regeneration du snapshot Carry Yen (CFTC + BCE + FRED)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=yct
+Group=yct
+EnvironmentFile=-/etc/yct/env
+ExecStart=/usr/bin/python3 /opt/yct/build_snapshot.py
+
+# --- Durcissement ---
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+# AF_UNIX requis pour la resolution DNS via systemd-resolved (nss-resolve)
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+UMask=0027
+# seul chemin inscriptible : le repertoire du snapshot
+ReadWritePaths=/var/lib/yct
+TimeoutStartSec=120

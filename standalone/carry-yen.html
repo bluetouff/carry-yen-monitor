@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carry Yen, moniteur du carry trade JPY et du positionnement spéculatif</title>
+<style>
+  :root{
+    --bg:#1a1a1a; --panel:#202020; --panel2:#171717; --line:rgba(0,240,208,.16);
+    --text:#b8fff5; --dim:#6f9b94; --faint:#456b65;
+    --usd:#00f0d0;        /* pôle dollar / carry actif (accent cyan signature) */
+    --yen:#ff6b9d;        /* pôle yen / risque de débouclage (prompt rose) */
+    --gold:#e0b341;       /* rendement / neutre (ambre terminal) */
+    --ok:#00f0d0;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono","Share Tech Mono",Menlo,Consolas,monospace;
+    --sans:var(--mono);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans)}
+  body{-webkit-font-smoothing:antialiased;line-height:1.45}
+  body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:9;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,.10) 3px);
+    mix-blend-mode:multiply;opacity:.5}
+  ::selection{background:var(--usd);color:#0a0a0a}
+  a{color:var(--usd);text-decoration:none}
+  a:hover{background:var(--usd);color:#0a0a0a}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 20px 80px}
+
+  /* En-tête tape */
+  header.tape{display:flex;flex-wrap:wrap;align-items:baseline;gap:14px 22px;
+    border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:22px}
+  .brand{font-weight:800;font-size:20px;letter-spacing:-.02em}
+  .brand b{color:var(--yen)}
+  .brand .v{color:var(--dim);font-weight:600}
+  .tag{font-family:var(--mono);font-size:11.5px;color:var(--dim);letter-spacing:.02em}
+  .pill{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim);
+    border:1px solid var(--line);border-radius:999px;padding:4px 10px;display:flex;gap:8px;align-items:center}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+  .dot.live{background:var(--ok);box-shadow:0 0 0 0 rgba(0,240,208,.6);animation:p 2.4s infinite}
+  @keyframes p{0%{box-shadow:0 0 0 0 rgba(0,240,208,.55)}70%{box-shadow:0 0 0 6px rgba(0,240,208,0)}100%{box-shadow:0 0 0 0 rgba(0,240,208,0)}}
+
+  /* KPI rangée */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:22px}
+  .kpi{background:var(--panel);padding:16px 16px 14px}
+  .kpi .lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+  .kpi .val{font-family:var(--mono);font-size:28px;font-weight:600;margin-top:7px;letter-spacing:-.01em;
+    font-variant-numeric:tabular-nums}
+  .kpi .sub{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:4px;font-variant-numeric:tabular-nums}
+  .up{color:var(--yen)} .down{color:var(--usd)} .flat{color:var(--dim)}
+
+  h2{font-size:13px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;
+    color:var(--dim);font-weight:600;margin:0 0 12px;display:flex;align-items:center;gap:10px}
+  h2::before{content:"";width:18px;height:2px;background:var(--yen);display:inline-block}
+
+  .grid2{display:grid;grid-template-columns:1.15fr .85fr;gap:18px;margin-bottom:26px}
+  .grid2.rev{grid-template-columns:.85fr 1.15fr}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+  .card .cap{font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:6px}
+
+  /* Jauge d'attaque (positionnement) */
+  .gauge{margin-top:6px}
+  .gnum{font-family:var(--mono);font-size:34px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .gtag{display:inline-block;font-family:var(--mono);font-size:11px;padding:3px 9px;border-radius:5px;margin-left:10px;vertical-align:middle}
+  .gtag.short{background:rgba(255,107,157,.14);color:var(--yen);border:1px solid rgba(255,107,157,.4)}
+  .gtag.long{background:rgba(0,240,208,.14);color:var(--usd);border:1px solid rgba(0,240,208,.4)}
+  .meterrow{margin-top:14px}
+  .meterrow .ml{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:5px}
+  .track{height:9px;background:var(--panel2);border-radius:6px;position:relative;overflow:hidden;border:1px solid var(--line)}
+  .fill{height:100%;border-radius:6px;transition:width .6s ease}
+
+  /* Barre de tension bipolaire (signature) */
+  .tension{position:relative;height:64px;margin:10px 0 6px;border-radius:10px;overflow:hidden;
+    background:linear-gradient(90deg, rgba(0,240,208,.16), rgba(23,23,23,.2) 50%, rgba(255,107,157,.18));
+    border:1px solid var(--line)}
+  .tcenter{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--faint)}
+  .needle{position:absolute;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--text);
+    box-shadow:0 0 14px rgba(184,255,245,.5);transition:left .7s cubic-bezier(.2,.8,.2,1)}
+  .tlabels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:4px}
+  .tlabels .l{color:var(--usd)} .tlabels .r{color:var(--yen)}
+  .verdict{font-family:var(--mono);font-size:12.5px;margin-top:12px;padding:10px 12px;border-radius:8px;
+    background:var(--panel2);border:1px solid var(--line);color:var(--text)}
+
+  /* Calculateur */
+  .calc label{display:block;font-family:var(--mono);font-size:11px;color:var(--dim);margin:12px 0 4px}
+  .calc input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    font-family:var(--mono);font-size:14px;padding:9px 11px;border-radius:7px;font-variant-numeric:tabular-nums}
+  .calc input:focus{outline:none;border-color:var(--usd)}
+  .calcgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+  .out{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .out div{background:var(--panel2);padding:11px 13px}
+  .out .ol{font-family:var(--mono);font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+  .out .ov{font-family:var(--mono);font-size:18px;font-variant-numeric:tabular-nums;margin-top:3px}
+
+  /* tableaux */
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+  th{color:var(--dim);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}
+  td.r,th.r{text-align:right}
+
+  svg{display:block;width:100%;height:auto}
+  .chartcap{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px}
+
+  .note{font-family:var(--mono);font-size:11.5px;color:var(--dim);line-height:1.7}
+  .sources{columns:2;column-gap:30px;font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+  .sources p{margin:0 0 8px;break-inside:avoid}
+  footer{margin-top:34px;border-top:1px solid var(--line);padding-top:16px;color:var(--faint);font-family:var(--mono);font-size:11px}
+  .err{color:var(--yen);font-family:var(--mono);font-size:11.5px}
+  @media(max-width:820px){
+    .kpis{grid-template-columns:repeat(2,1fr)}
+    .grid2,.grid2.rev{grid-template-columns:1fr}
+    .sources{columns:1}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="tape">
+    <div class="brand"><b>鈴</b> Carry <b>Yen</b> <span class="v">/ moniteur</span></div>
+    <div class="tag">positionnement spéculatif JPY &middot; différentiel de taux &middot; risque de débouclage</div>
+    <div class="pill"><span class="dot" id="statusDot"></span><span id="statusTxt">connexion aux sources...</span></div>
+  </header>
+
+  <!-- KPI principaux -->
+  <div class="kpis" id="kpis">
+    <div class="kpi"><div class="lbl">USD / JPY</div><div class="val" id="kSpot">...</div><div class="sub" id="kSpotSub">réf. BCE quotidienne</div></div>
+    <div class="kpi"><div class="lbl">Différentiel Fed - BoJ</div><div class="val" id="kDiff">...</div><div class="sub" id="kDiffSub">carry brut annualisé</div></div>
+    <div class="kpi"><div class="lbl">Net spéculatif JPY (CFTC)</div><div class="val" id="kNet">...</div><div class="sub" id="kNetSub">contrats non-commerciaux</div></div>
+    <div class="kpi"><div class="lbl">Risque de débouclage</div><div class="val" id="kRisk">...</div><div class="sub" id="kRiskSub">composite heuristique</div></div>
+  </div>
+
+  <!-- Tension + positionnement -->
+  <div class="grid2">
+    <section class="card">
+      <h2>Qui attaque le yen, positionnement CFTC</h2>
+      <div class="cap">Position nette des non-commerciaux (fonds à effet de levier, CTA, macro) sur le futur yen au CME. Net short = pari contre le yen, le carry est actif. Un reflux du short signale un débouclage.</div>
+      <div class="gauge">
+        <span class="gnum" id="netBig">...</span><span class="gtag" id="netTag">...</span>
+        <div class="meterrow">
+          <div class="ml"><span>intensité du short vs extrême 3 ans</span><span id="crowdPct">...</span></div>
+          <div class="track"><div class="fill" id="crowdFill" style="width:0%;background:var(--yen)"></div></div>
+        </div>
+        <div class="meterrow">
+          <div class="ml"><span>notionnel net estimé</span><span id="notional">...</span></div>
+        </div>
+      </div>
+      <div style="margin-top:18px">
+        <div id="cotChart"></div>
+        <div class="chartcap"><span id="cotStart"></span><span>net non-commercial, contrats (12,5 M¥ pièce)</span><span id="cotEnd"></span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Tension carry contre débouclage</h2>
+      <div class="cap">Le pôle gauche tire vers le carry (différentiel large, yen faible, short profitable). Le pôle droit tire vers le débouclage (shorts surchargés, BoJ qui resserre, yen qui s'apprécie).</div>
+      <div class="tension"><div class="tcenter"></div><div class="needle" id="needle" style="left:50%"></div></div>
+      <div class="tlabels"><span class="l">CARRY ACTIF</span><span>équilibre</span><span class="r">DÉBOUCLAGE</span></div>
+      <div class="verdict" id="verdict">évaluation en cours...</div>
+      <div class="meterrow" style="margin-top:16px">
+        <div class="ml"><span>surcharge des positions short</span><span id="c1">...</span></div>
+        <div class="track"><div class="fill" id="f1" style="background:var(--yen)"></div></div>
+      </div>
+      <div class="meterrow">
+        <div class="ml"><span>appréciation récente du yen (4 sem.)</span><span id="c2">...</span></div>
+        <div class="track"><div class="fill" id="f2" style="background:var(--yen)"></div></div>
+      </div>
+      <div class="meterrow">
+        <div class="ml"><span>compression du différentiel de taux</span><span id="c3">...</span></div>
+        <div class="track"><div class="fill" id="f3" style="background:var(--yen)"></div></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- FX + calculateur -->
+  <div class="grid2 rev">
+    <section class="card calc">
+      <h2>Calculateur de carry</h2>
+      <div class="calcgrid">
+        <div><label>Taux BoJ (%)</label><input id="iBoj" type="number" step="0.05" value="0.75"></div>
+        <div><label>Taux Fed (médiane, %)</label><input id="iFed" type="number" step="0.05" value="3.625"></div>
+        <div><label>Levier</label><input id="iLev" type="number" step="0.5" value="1"></div>
+        <div><label>Mouvement USD/JPY anticipé (%)</label><input id="iMove" type="number" step="0.5" value="0"></div>
+      </div>
+      <div class="out">
+        <div><div class="ol">Carry annuel brut</div><div class="ov" id="oCarry">...</div></div>
+        <div><div class="ol">Rendement total (avec FX)</div><div class="ov" id="oTotal">...</div></div>
+        <div><div class="ol">Appréciation yen neutralisante</div><div class="ov" id="oBreak">...</div></div>
+        <div><div class="ol">Niveau USD/JPY de seuil</div><div class="ov" id="oLevel">...</div></div>
+      </div>
+      <div class="note" style="margin-top:12px">Le carry net se gagne chaque jour tant que le yen ne s'apprécie pas plus vite que le différentiel. Au-delà du seuil, le change efface le portage. Outil d'analyse, pas un conseil en investissement.</div>
+    </section>
+
+    <section class="card">
+      <h2>USD/JPY, 12 mois</h2>
+      <div class="cap">Référence quotidienne BCE. Une baisse (yen plus fort) sous les moyennes longues est le premier signal technique d'un débouclage.</div>
+      <div id="fxChart" style="margin-top:8px"></div>
+      <div class="chartcap"><span id="fxStart"></span><span id="fxRange">...</span><span id="fxEnd"></span></div>
+    </section>
+  </div>
+
+  <!-- Repères -->
+  <section class="card" style="margin-bottom:26px">
+    <h2>Repères et mémoire du marché</h2>
+    <table>
+      <thead><tr><th>Repère</th><th>Niveau / valeur</th><th>Lecture</th></tr></thead>
+      <tbody>
+        <tr><td>Pic du différentiel 2024</td><td>~525 pb</td><td>USD/JPY à 161,9 (juillet 2024), carry au sommet</td></tr>
+        <tr><td>Débouclage août 2024</td><td>161,0 vers 141,7</td><td>hausse BoJ 31/07 + emploi US faible, Nikkei -12,4% le 5 août</td></tr>
+        <tr><td>Mécanique du débouclage</td><td>FX d'abord</td><td>yen racheté, actifs à levier vendus, liquidité qui s'évapore</td></tr>
+        <tr><td>Niveau pivot suivi</td><td>~160 / MM200</td><td>cassure haussière vs accélération du yen</td></tr>
+        <tr><td>Repli des shorts (2008, 2015, 2020)</td><td>brutal</td><td>les reflux de carry amplifient les corrections de marché</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Sources et méthode</h2>
+    <div class="sources">
+      <p><b style="color:var(--text)">CFTC</b> Commitments of Traders, Legacy Futures Only (dataset 6dca-aqww). Position nette non-commerciale = longs moins shorts sur le futur yen CME. Publié chaque vendredi, arrêté au mardi. Récupéré en direct via l'API Socrata.</p>
+      <p><b style="color:var(--text)">BCE</b> taux de référence quotidiens via Frankfurter, USD/JPY dérivé sans clé d'API.</p>
+      <p><b style="color:var(--text)">Taux directeurs</b> BoJ et Fed saisis manuellement dans le calculateur (champs éditables). Pour les automatiser, brancher FRED (DFEDTARU, IRSTCB01JPM156N) via un proxy sur zen.</p>
+      <p><b style="color:var(--text)">Notionnel</b> contrats nets x 12 500 000 ¥ converti au spot. Le composite de risque est une heuristique de surveillance, pas une mesure officielle.</p>
+      <p style="color:var(--faint)">Pour aller plus loin sur la taille réelle du carry global et l'exposition Treasuries: BIS Quarterly Review, données TIC du Treasury, bilan BoJ.</p>
+    </div>
+  </section>
+
+  <footer>
+    Données récupérées côté client, aucune clé exposée, aucun tiers de traçage. Recharger pour rafraîchir. <span id="ts"></span>
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var CONTRACT_YEN = 12500000;
+  var CFTC = "https://publicreporting.cftc.gov/resource/6dca-aqww.json";
+  var state = { spot:null, fxSeries:[], cot:[], move4w:null };
+
+  var $ = function(id){ return document.getElementById(id); };
+  function fmt(n,d){ if(n===null||n===undefined||isNaN(n)) return "—"; return Number(n).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}); }
+  function signed(n,d){ var s = n>0?"+":""; return s+fmt(n,d); }
+
+  // ---------- récupération ----------
+  function getFX(){
+    var end = new Date();
+    var start = new Date(); start.setDate(start.getDate()-372);
+    var s = start.toISOString().slice(0,10), e = end.toISOString().slice(0,10);
+    var url = "https://api.frankfurter.dev/v1/"+s+".."+e+"?base=USD&symbols=JPY";
+    return fetch(url).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
+      var rows = Object.keys(j.rates||{}).sort().map(function(d){ return {d:d, v:j.rates[d].JPY}; })
+                 .filter(function(p){ return p.v; });
+      state.fxSeries = rows;
+      if(rows.length){ state.spot = rows[rows.length-1].v; }
+      return rows;
+    });
+  }
+  function getCOT(){
+    var where = "market_and_exchange_names like '%JAPANESE YEN%'";
+    var url = CFTC + "?$where=" + encodeURIComponent(where)
+            + "&$order=" + encodeURIComponent("report_date_as_yyyy_mm_dd DESC")
+            + "&$limit=170";
+    return fetch(url).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
+      var rows = (j||[]).map(function(x){
+        var L = +x.noncomm_positions_long_all, S = +x.noncomm_positions_short_all, OI = +x.open_interest_all;
+        return { d:(x.report_date_as_yyyy_mm_dd||"").slice(0,10), net:L-S, oi:OI };
+      }).filter(function(x){ return x.d && !isNaN(x.net); });
+      // Le filtre large ramene plusieurs contrats "JAPANESE YEN" (standard + micro).
+      // On ne garde par date que la ligne au plus gros open interest : le contrat standard.
+      var byDate = {};
+      rows.forEach(function(r){ if(!byDate[r.d] || r.oi>byDate[r.d].oi) byDate[r.d]=r; });
+      rows = Object.keys(byDate).map(function(k){ return byDate[k]; });
+      rows.sort(function(a,b){ return a.d<b.d?-1:1; });
+      state.cot = rows;
+      return rows;
+    });
+  }
+
+  // ---------- graphiques SVG ----------
+  function lineChart(el, pts, opts){
+    opts = opts || {};
+    var W=620, H=200, pad={l:46,r:12,t:14,b:24};
+    var xs = pts.map(function(p){return p.x;}), ys = pts.map(function(p){return p.y;});
+    var minY = opts.min!==undefined?opts.min:Math.min.apply(null,ys);
+    var maxY = opts.max!==undefined?opts.max:Math.max.apply(null,ys);
+    if(minY===maxY){ maxY+=1; minY-=1; }
+    var iw=W-pad.l-pad.r, ih=H-pad.t-pad.b;
+    function px(i){ return pad.l + (pts.length<2?0:(i/(pts.length-1))*iw); }
+    function py(v){ return pad.t + ih - ((v-minY)/(maxY-minY))*ih; }
+    var d="", zero=null;
+    pts.forEach(function(p,i){ d += (i?"L":"M")+px(i).toFixed(1)+" "+py(p.y).toFixed(1)+" "; });
+    var area = d + "L"+px(pts.length-1).toFixed(1)+" "+(pad.t+ih)+" L"+pad.l+" "+(pad.t+ih)+" Z";
+    if(minY<0 && maxY>0){ zero = py(0); }
+    var grid="";
+    for(var g=0; g<=4; g++){ var gy=pad.t+(g/4)*ih; var gv=maxY-(g/4)*(maxY-minY);
+      grid += '<line x1="'+pad.l+'" y1="'+gy.toFixed(1)+'" x2="'+(W-pad.r)+'" y2="'+gy.toFixed(1)+'" stroke="#22403c" stroke-width="1"/>';
+      grid += '<text x="'+(pad.l-6)+'" y="'+(gy+3).toFixed(1)+'" fill="#6f9b94" font-size="10" font-family="ui-monospace,monospace" text-anchor="end">'+ (opts.fmtY?opts.fmtY(gv):Math.round(gv)) +'</text>';
+    }
+    var col = opts.color||"#00f0d0";
+    var last = pts[pts.length-1];
+    var svg = '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" role="img">'
+      + grid
+      + (zero!==null?'<line x1="'+pad.l+'" y1="'+zero.toFixed(1)+'" x2="'+(W-pad.r)+'" y2="'+zero.toFixed(1)+'" stroke="#456b65" stroke-width="1" stroke-dasharray="3 3"/>':'')
+      + '<defs><linearGradient id="grad_'+opts.id+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+col+'" stop-opacity="0.22"/><stop offset="1" stop-color="'+col+'" stop-opacity="0"/></linearGradient></defs>'
+      + '<path d="'+area+'" fill="url(#grad_'+opts.id+')"/>'
+      + '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="1.8" stroke-linejoin="round"/>'
+      + '<circle cx="'+px(pts.length-1).toFixed(1)+'" cy="'+py(last.y).toFixed(1)+'" r="3" fill="'+col+'"/>'
+      + '</svg>';
+    el.innerHTML = svg;
+  }
+
+  // ---------- rendu ----------
+  function status(ok,msg){ $("statusDot").className = "dot"+(ok?" live":""); $("statusTxt").textContent = msg; }
+
+  function render(){
+    var boj = parseFloat($("iBoj").value)||0, fed = parseFloat($("iFed").value)||0;
+    var diff = fed - boj;
+
+    // KPI spot
+    if(state.spot){
+      $("kSpot").textContent = fmt(state.spot,2);
+      var fx = state.fxSeries;
+      // variation 1 semaine
+      if(fx.length>6){
+        var wk = ((state.spot/fx[fx.length-6].v)-1)*100;
+        var cls = wk>0.02?"up":(wk<-0.02?"down":"flat");
+        $("kSpotSub").innerHTML = 'réf. BCE &middot; <span class="'+cls+'">'+signed(wk,2)+'% / 5j</span>';
+      }
+      // variation 4 sem pour le risque
+      if(fx.length>22){ state.move4w = ((state.spot/fx[fx.length-21].v)-1)*100; }
+    } else { $("kSpot").textContent="—"; }
+
+    $("kDiff").textContent = fmt(diff,2)+" pt";
+    $("kDiffSub").textContent = "≈ "+fmt(diff*100,0)+" pb de portage brut";
+
+    // CFTC
+    var cot = state.cot, latest = cot.length?cot[cot.length-1]:null;
+    if(latest){
+      var net = latest.net;
+      $("kNet").textContent = signed(net,0);
+      $("kNet").className = "val "+(net<0?"up":"down");
+      $("kNetSub").textContent = "au "+latest.d+(net<0?" &middot; short yen":" &middot; long yen");
+      $("netBig").textContent = signed(net,0);
+      $("netTag").className = "gtag "+(net<0?"short":"long");
+      $("netTag").textContent = net<0?"pari CONTRE le yen (carry actif)":"pari POUR le yen (couverture / débouclage)";
+
+      var nets = cot.map(function(c){return c.net;});
+      var maxShort = Math.min.apply(null,nets); // plus négatif
+      var crowd = net<0 && maxShort<0 ? Math.max(0,Math.min(100,(net/maxShort)*100)) : 0;
+      $("crowdPct").textContent = fmt(crowd,0)+"% de l'extrême";
+      $("crowdFill").style.width = crowd+"%";
+      $("c1").textContent = fmt(crowd,0)+"%";
+      $("f1").style.width = crowd+"%";
+
+      if(state.spot){
+        var notB = Math.abs(net)*CONTRACT_YEN/state.spot/1e9;
+        $("notional").textContent = "≈ "+fmt(notB,1)+" Md$ "+(net<0?"de short yen":"de long yen");
+      }
+
+      // graphique CoT
+      var pts = cot.map(function(c,i){return {x:i,y:c.net};});
+      lineChart($("cotChart"), pts, {id:"cot", color:"#ff6b9d", fmtY:function(v){return (v/1000).toFixed(0)+"k";}});
+      $("cotStart").textContent = cot[0].d;
+      $("cotEnd").textContent = latest.d;
+    } else {
+      $("kNet").textContent="—"; $("netBig").textContent="—";
+      $("cotChart").innerHTML='<div class="err">positionnement CFTC indisponible</div>';
+    }
+
+    // FX chart
+    if(state.fxSeries.length){
+      var fx = state.fxSeries;
+      var fpts = fx.map(function(p,i){return {x:i,y:p.v};});
+      lineChart($("fxChart"), fpts, {id:"fx", color:"#00f0d0", fmtY:function(v){return v.toFixed(0);}});
+      $("fxStart").textContent = fx[0].d;
+      $("fxEnd").textContent = fx[fx.length-1].d;
+      var lo=Math.min.apply(null,fx.map(function(p){return p.v;})), hi=Math.max.apply(null,fx.map(function(p){return p.v;}));
+      $("fxRange").textContent = "plage 12m "+fmt(lo,1)+" - "+fmt(hi,1);
+    }
+
+    computeRisk(diff);
+    computeCalc(diff);
+  }
+
+  function computeRisk(diff){
+    var cot = state.cot, latest = cot.length?cot[cot.length-1]:null;
+    // 1. surcharge short
+    var crowd = 0;
+    if(latest && latest.net<0){
+      var maxShort = Math.min.apply(null, cot.map(function(c){return c.net;}));
+      if(maxShort<0) crowd = Math.max(0,Math.min(100,(latest.net/maxShort)*100));
+    }
+    // 2. appréciation yen 4 sem (USD/JPY en baisse = yen fort = risque). +risque si baisse.
+    var appro = 0;
+    if(state.move4w!==null){ appro = Math.max(0,Math.min(100, -state.move4w*22)); } // -4,5% => 100
+    // 3. compression du différentiel: plus le différentiel est faible, plus le matelas est mince
+    var compress = Math.max(0,Math.min(100, (5.25-diff)/5.25*100));
+
+    $("c2").textContent = (state.move4w!==null?signed(state.move4w,1)+"%":"—");
+    $("f2").style.width = appro+"%";
+    $("c3").textContent = fmt(diff,2)+" pt";
+    $("f3").style.width = compress+"%";
+
+    var risk = Math.round(crowd*0.45 + appro*0.35 + compress*0.20);
+    var band = risk<30?["Faible","var(--ok)"]:risk<55?["Modéré","var(--gold)"]:risk<78?["Élevé","var(--yen)"]:["Critique","var(--yen)"];
+    $("kRisk").textContent = risk;
+    $("kRisk").style.color = band[1];
+    $("kRiskSub").textContent = band[0]+" &middot; surcharge "+fmt(crowd,0)+"%";
+
+    // aiguille de tension: 0 = carry, 100 = débouclage
+    $("needle").style.left = Math.max(2,Math.min(98,risk))+"%";
+    var v = risk<30
+      ? "Le carry domine. Différentiel large, shorts non extrêmes, yen stable. Le portage se gagne, mais surveiller tout reflux des shorts."
+      : risk<55
+      ? "Équilibre fragile. Le carry reste payant mais le matelas se réduit. Une hausse BoJ ou un choc de risque peut amorcer un débouclage."
+      : risk<78
+      ? "Risque élevé. Shorts surchargés et/ou yen qui s'apprécie. Configuration propice à des rachats forcés et à de la volatilité."
+      : "Risque critique. Positionnement extrême et momentum yen défavorable au carry. Mémoire d'août 2024.";
+    $("verdict").textContent = v;
+  }
+
+  function computeCalc(diff){
+    var lev = parseFloat($("iLev").value)||1;
+    var move = parseFloat($("iMove").value)||0;
+    var carry = diff*lev;
+    var total = (diff + move)*lev; // move<0 (yen plus fort, USD/JPY baisse) ampute
+    $("oCarry").textContent = signed(carry,2)+"%";
+    $("oCarry").className = "ov "+(carry>=0?"down":"up");
+    $("oTotal").textContent = signed(total,2)+"%";
+    $("oTotal").className = "ov "+(total>=0?"down":"up");
+    $("oBreak").textContent = "-"+fmt(diff,2)+"%";
+    if(state.spot){ $("oLevel").textContent = fmt(state.spot*(1-diff/100),2); }
+    else { $("oLevel").textContent="—"; }
+  }
+
+  ["iBoj","iFed","iLev","iMove"].forEach(function(id){
+    $(id).addEventListener("input", function(){ render(); });
+  });
+
+  // ---------- init ----------
+  $("ts").textContent = "Session du " + new Date().toLocaleString("fr-FR");
+  status(false,"connexion aux sources...");
+
+  Promise.allSettled([getFX(), getCOT()]).then(function(res){
+    var fxOk = res[0].status==="fulfilled", cotOk = res[1].status==="fulfilled";
+    render();
+    if(fxOk && cotOk) status(true,"flux BCE + CFTC actifs");
+    else if(fxOk) status(true,"BCE actif, CFTC indisponible");
+    else if(cotOk) status(true,"CFTC actif, BCE indisponible");
+    else status(false,"sources injoignables, calculateur seul");
+  });
+})();
+</script>
+</body>
+</html>

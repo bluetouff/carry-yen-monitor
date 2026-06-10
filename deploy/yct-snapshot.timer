@@ -1,0 +1,16 @@
+[Unit]
+Description=YCT - declenche la regeneration du snapshot Carry Yen
+
+[Timer]
+# Quelques passages par jour : couvre la publication CFTC du vendredi (~21h30 CET)
+# et la reference BCE quotidienne (~16h CET), avec marge.
+OnCalendar=*-*-* 06,12,18,23:15
+# Une passe peu apres le boot pour ne pas attendre le prochain creneau.
+OnBootSec=3min
+# Etale le declenchement pour ne pas taper les API a la seconde pile.
+RandomizedDelaySec=300
+# Rattrape un creneau manque (serveur eteint, etc.).
+Persistent=true
+
+[Install]
+WantedBy=timers.target

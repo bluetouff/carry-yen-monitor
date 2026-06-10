@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Carry Yen, moniteur du carry trade JPY et du positionnement spéculatif</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="tape">
+    <div class="brand"><b>鈴</b> Carry <b>Yen</b> <span class="v">/ moniteur</span></div>
+    <div class="tag">positionnement spéculatif JPY &middot; différentiel de taux &middot; risque de débouclage</div>
+    <div class="pill"><span class="dot" id="statusDot"></span><span id="statusTxt">chargement...</span></div>
+  </header>
+
+  <!-- KPI principaux -->
+  <div class="kpis" id="kpis">
+    <div class="kpi"><div class="lbl">USD / JPY</div><div class="val" id="kSpot">...</div><div class="sub" id="kSpotSub">réf. BCE quotidienne</div></div>
+    <div class="kpi"><div class="lbl">Différentiel Fed - BoJ</div><div class="val" id="kDiff">...</div><div class="sub" id="kDiffSub">carry brut annualisé</div></div>
+    <div class="kpi"><div class="lbl">Net spéculatif JPY (CFTC)</div><div class="val" id="kNet">...</div><div class="sub" id="kNetSub">contrats non-commerciaux</div></div>
+    <div class="kpi"><div class="lbl">Risque de débouclage</div><div class="val" id="kRisk">...</div><div class="sub" id="kRiskSub">composite heuristique</div></div>
+  </div>
+
+  <!-- Tension + positionnement -->
+  <div class="grid2">
+    <section class="card">
+      <h2>Qui attaque le yen, positionnement CFTC</h2>
+      <div class="cap">Position nette des non-commerciaux (fonds à effet de levier, CTA, macro) sur le futur yen au CME. Net short = pari contre le yen, le carry est actif. Un reflux du short signale un débouclage.</div>
+      <div class="gauge">
+        <span class="gnum" id="netBig">...</span><span class="gtag" id="netTag">...</span>
+        <div class="meterrow">
+          <div class="ml"><span>intensité du short vs extrême 3 ans</span><span id="crowdPct">...</span></div>
+          <div class="track"><div class="fill" id="crowdFill" style="width:0%;background:var(--yen)"></div></div>
+        </div>
+        <div class="meterrow">
+          <div class="ml"><span>notionnel net estimé</span><span id="notional">...</span></div>
+        </div>
+      </div>
+      <div style="margin-top:18px">
+        <div id="cotChart"></div>
+        <div class="chartcap"><span id="cotStart"></span><span>net non-commercial, contrats (12,5 M¥ pièce)</span><span id="cotEnd"></span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Tension carry contre débouclage</h2>
+      <div class="cap">Le pôle gauche tire vers le carry (différentiel large, yen faible, short profitable). Le pôle droit tire vers le débouclage (shorts surchargés, BoJ qui resserre, yen qui s'apprécie).</div>
+      <div class="tension"><div class="tcenter"></div><div class="needle" id="needle" style="left:50%"></div></div>
+      <div class="tlabels"><span class="l">CARRY ACTIF</span><span>équilibre</span><span class="r">DÉBOUCLAGE</span></div>
+      <div class="verdict" id="verdict">évaluation en cours...</div>
+      <div class="meterrow" style="margin-top:16px">
+        <div class="ml"><span>surcharge des positions short</span><span id="c1">...</span></div>
+        <div class="track"><div class="fill" id="f1" style="background:var(--yen)"></div></div>
+      </div>
+      <div class="meterrow">
+        <div class="ml"><span>appréciation récente du yen (4 sem.)</span><span id="c2">...</span></div>
+        <div class="track"><div class="fill" id="f2" style="background:var(--yen)"></div></div>
+      </div>
+      <div class="meterrow">
+        <div class="ml"><span>compression du différentiel de taux</span><span id="c3">...</span></div>
+        <div class="track"><div class="fill" id="f3" style="background:var(--yen)"></div></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- FX + calculateur -->
+  <div class="grid2 rev">
+    <section class="card calc">
+      <h2>Calculateur de carry</h2>
+      <div class="calcgrid">
+        <div><label>Taux BoJ (%)</label><input id="iBoj" type="number" step="0.05" value="0.75"></div>
+        <div><label>Taux Fed (médiane, %)</label><input id="iFed" type="number" step="0.05" value="3.625"></div>
+        <div><label>Levier</label><input id="iLev" type="number" step="0.5" value="1"></div>
+        <div><label>Mouvement USD/JPY anticipé (%)</label><input id="iMove" type="number" step="0.5" value="0"></div>
+      </div>
+      <div class="out">
+        <div><div class="ol">Carry annuel brut</div><div class="ov" id="oCarry">...</div></div>
+        <div><div class="ol">Rendement total (avec FX)</div><div class="ov" id="oTotal">...</div></div>
+        <div><div class="ol">Appréciation yen neutralisante</div><div class="ov" id="oBreak">...</div></div>
+        <div><div class="ol">Niveau USD/JPY de seuil</div><div class="ov" id="oLevel">...</div></div>
+      </div>
+      <div class="note" style="margin-top:12px">Le carry net se gagne chaque jour tant que le yen ne s'apprécie pas plus vite que le différentiel. Au-delà du seuil, le change efface le portage. Outil d'analyse, pas un conseil en investissement.</div>
+    </section>
+
+    <section class="card">
+      <h2>USD/JPY, 12 mois</h2>
+      <div class="cap">Référence quotidienne BCE. Une baisse (yen plus fort) sous les moyennes longues est le premier signal technique d'un débouclage.</div>
+      <div id="fxChart" style="margin-top:8px"></div>
+      <div class="chartcap"><span id="fxStart"></span><span id="fxRange">...</span><span id="fxEnd"></span></div>
+    </section>
+  </div>
+
+  <!-- Repères -->
+  <section class="card" style="margin-bottom:26px">
+    <h2>Repères et mémoire du marché</h2>
+    <table>
+      <thead><tr><th>Repère</th><th>Niveau / valeur</th><th>Lecture</th></tr></thead>
+      <tbody>
+        <tr><td>Pic du différentiel 2024</td><td>~525 pb</td><td>USD/JPY à 161,9 (juillet 2024), carry au sommet</td></tr>
+        <tr><td>Débouclage août 2024</td><td>161,0 vers 141,7</td><td>hausse BoJ 31/07 + emploi US faible, Nikkei -12,4% le 5 août</td></tr>
+        <tr><td>Mécanique du débouclage</td><td>FX d'abord</td><td>yen racheté, actifs à levier vendus, liquidité qui s'évapore</td></tr>
+        <tr><td>Niveau pivot suivi</td><td>~160 / MM200</td><td>cassure haussière vs accélération du yen</td></tr>
+        <tr><td>Repli des shorts (2008, 2015, 2020)</td><td>brutal</td><td>les reflux de carry amplifient les corrections de marché</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Sources et méthode</h2>
+    <div class="sources">
+      <p><b style="color:var(--text)">CFTC</b> Commitments of Traders, Legacy Futures Only (dataset 6dca-aqww). Position nette non-commerciale = longs moins shorts sur le futur yen CME. Publié chaque vendredi, arrêté au mardi. Régénéré côté serveur via l'API Socrata.</p>
+      <p><b style="color:var(--text)">BCE</b> taux de référence quotidiens (USD/JPY dérivé), récupérés côté serveur, sans clé d'API et sans appel tiers depuis le navigateur.</p>
+      <p><b style="color:var(--text)">Taux directeurs</b> Fed depuis FRED (DFEDTARU et DFEDTARL, médiane) si une clé est configurée, sinon valeurs du snapshot. BoJ depuis la configuration serveur. Champs éditables pour scénarios.</p>
+      <p><b style="color:var(--text)">Notionnel</b> contrats nets x 12 500 000 ¥ converti au spot. Le composite de risque est une heuristique de surveillance, pas une mesure officielle.</p>
+      <p style="color:var(--faint)">Pour aller plus loin sur la taille réelle du carry global et l'exposition Treasuries: BIS Quarterly Review, données TIC du Treasury, bilan BoJ.</p>
+    </div>
+  </section>
+
+  <footer>
+    Architecture snapshot. Le navigateur ne lit qu'un fichier local régénéré par le serveur, aucun tiers contacté, aucune clé exposée. <span id="ts"></span>
+  </footer>
+
+</div>
+<script src="app.js"></script>
+</body>
+</html>
