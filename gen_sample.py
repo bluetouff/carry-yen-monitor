@@ -57,7 +57,7 @@ def gen_fx(n=260):
     return rows
 
 
-def gen_cot(weeks=124):
+def gen_cot(weeks=170):
     # Net non-commercial : short profond mi-2024 (-184k), bascule longue debut
     # 2025 (+179k), retour short mi-2026 (-130k). Reperes reels approximes.
     anchors = [(0.0, -120000), (0.18, -184000), (0.30, 66000), (0.52, 179000),
@@ -81,11 +81,19 @@ def main():
     cot = gen_cot()
     out = {
         "sample": True,
+        "schema_version": 2,
         "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "rates": {"boj": 0.75, "fed": 3.625, "fed_source": "sample"},
+        "health": {"status": "degraded", "checks": {"cot": False, "fx": False, "fed": False, "boj": False}},
+        "rates": {"boj": 1.0, "fed": 3.625, "fed_source": "sample", "boj_source": "sample"},
         "fx": fx,
         "cot": cot,
         "spot": fx[-1]["v"],
+        "sources": {
+            "cot": {"status": "sample", "data_as_of": cot[-1]["d"]},
+            "fx": {"status": "sample", "data_as_of": fx[-1]["d"]},
+            "fed": {"status": "sample", "data_as_of": datetime.now(timezone.utc).date().isoformat()},
+            "boj": {"status": "sample", "data_as_of": datetime.now(timezone.utc).date().isoformat()},
+        },
     }
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:

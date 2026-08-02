@@ -134,7 +134,7 @@
   <div class="grid2">
     <section class="card">
       <h2>Qui attaque le yen, positionnement CFTC</h2>
-      <div class="cap">Position nette des non-commerciaux (fonds à effet de levier, CTA, macro) sur le futur yen au CME. Net short = pari contre le yen, le carry est actif. Un reflux du short signale un débouclage.</div>
+      <div class="cap">Position nette de la catégorie large « non-commercial » du rapport Legacy sur le futur yen standard au CME. Elle ne se confond pas avec la catégorie TFF « leveraged funds ».</div>
       <div class="gauge">
         <span class="gnum" id="netBig">...</span><span class="gtag" id="netTag">...</span>
         <div class="meterrow">
@@ -177,8 +177,8 @@
     <section class="card calc">
       <h2>Calculateur de carry</h2>
       <div class="calcgrid">
-        <div><label>Taux BoJ (%)</label><input id="iBoj" type="number" step="0.05" value="0.75"></div>
-        <div><label>Taux Fed (médiane, %)</label><input id="iFed" type="number" step="0.05" value="3.625"></div>
+        <div><label>Cible BoJ (%)</label><input id="iBoj" type="number" step="0.05" value="1.00"></div>
+        <div><label>Milieu de cible Fed (%)</label><input id="iFed" type="number" step="0.05" value="3.625"></div>
         <div><label>Levier</label><input id="iLev" type="number" step="0.5" value="1"></div>
         <div><label>Mouvement USD/JPY anticipé (%)</label><input id="iMove" type="number" step="0.5" value="0"></div>
       </div>
@@ -218,7 +218,7 @@
     <h2>Sources et méthode</h2>
     <div class="sources">
       <p><b style="color:var(--text)">CFTC</b> Commitments of Traders, Legacy Futures Only (dataset 6dca-aqww). Position nette non-commerciale = longs moins shorts sur le futur yen CME. Publié chaque vendredi, arrêté au mardi. Récupéré en direct via l'API Socrata.</p>
-      <p><b style="color:var(--text)">BCE</b> taux de référence quotidiens via Frankfurter, USD/JPY dérivé sans clé d'API.</p>
+      <p><b style="color:var(--text)">BCE</b> API Data officielle, USD/JPY dérivé de EUR/JPY ÷ EUR/USD.</p>
       <p><b style="color:var(--text)">Taux directeurs</b> BoJ et Fed saisis manuellement dans le calculateur (champs éditables). Pour les automatiser, brancher FRED (DFEDTARU, IRSTCB01JPM156N) via un proxy sur zen.</p>
       <p><b style="color:var(--text)">Notionnel</b> contrats nets x 12 500 000 ¥ converti au spot. Le composite de risque est une heuristique de surveillance, pas une mesure officielle.</p>
       <p style="color:var(--faint)">Pour aller plus loin sur la taille réelle du carry global et l'exposition Treasuries: BIS Quarterly Review, données TIC du Treasury, bilan BoJ.</p>
@@ -247,17 +247,24 @@
     var end = new Date();
     var start = new Date(); start.setDate(start.getDate()-372);
     var s = start.toISOString().slice(0,10), e = end.toISOString().slice(0,10);
-    var url = "https://api.frankfurter.dev/v1/"+s+".."+e+"?base=USD&symbols=JPY";
-    return fetch(url).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
-      var rows = Object.keys(j.rates||{}).sort().map(function(d){ return {d:d, v:j.rates[d].JPY}; })
-                 .filter(function(p){ return p.v; });
+    var url = "https://data-api.ecb.europa.eu/service/data/EXR/D.USD+JPY.EUR.SP00.A?startPeriod="+s+"&endPeriod="+e+"&format=csvdata";
+    return fetch(url).then(function(r){ if(!r.ok) throw 0; return r.text(); }).then(function(text){
+      var rates = {};
+      text.trim().split(/\r?\n/).slice(1).forEach(function(line){
+        var parts = line.split(","), currency=parts[1], d=parts[6], value=+parts[7];
+        if((currency==="USD"||currency==="JPY") && d && value>0){
+          rates[d] = rates[d] || {}; rates[d][currency] = value;
+        }
+      });
+      var rows = Object.keys(rates).sort().filter(function(d){ return rates[d].USD && rates[d].JPY; })
+        .map(function(d){ return {d:d, v:rates[d].JPY/rates[d].USD}; });
       state.fxSeries = rows;
       if(rows.length){ state.spot = rows[rows.length-1].v; }
       return rows;
     });
   }
   function getCOT(){
-    var where = "market_and_exchange_names like '%JAPANESE YEN%'";
+    var where = "cftc_contract_market_code = '097741'";
     var url = CFTC + "?$where=" + encodeURIComponent(where)
             + "&$order=" + encodeURIComponent("report_date_as_yyyy_mm_dd DESC")
             + "&$limit=170";
@@ -266,11 +273,6 @@
         var L = +x.noncomm_positions_long_all, S = +x.noncomm_positions_short_all, OI = +x.open_interest_all;
         return { d:(x.report_date_as_yyyy_mm_dd||"").slice(0,10), net:L-S, oi:OI };
       }).filter(function(x){ return x.d && !isNaN(x.net); });
-      // Le filtre large ramene plusieurs contrats "JAPANESE YEN" (standard + micro).
-      // On ne garde par date que la ligne au plus gros open interest : le contrat standard.
-      var byDate = {};
-      rows.forEach(function(r){ if(!byDate[r.d] || r.oi>byDate[r.d].oi) byDate[r.d]=r; });
-      rows = Object.keys(byDate).map(function(k){ return byDate[k]; });
       rows.sort(function(a,b){ return a.d<b.d?-1:1; });
       state.cot = rows;
       return rows;

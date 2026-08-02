@@ -2,7 +2,7 @@
 
 Language: **English** · [Français](README.fr.md)
 
-A web dashboard that watches the yen carry trade and answers, at a glance, one simple question: are funds still betting against the yen, and is the risk of a violent reversal rising?
+A web dashboard that watches the yen carry trade and answers, at a glance, one simple question: are CFTC non-commercial traders still betting against the yen, and is the risk of a violent reversal rising?
 
 Live demo: https://yct.l0g.fr
 
@@ -17,7 +17,7 @@ The catch: that difference is earned on credit and with leverage. If the yen sud
 This dashboard measures three things to gauge where we stand:
 
 - How profitable the bet against the yen is today (the rate gap between the United States and Japan).
-- How many funds are positioned against the yen, and whether that crowd is already large (hence fragile).
+- How large the broad CFTC Legacy non-commercial position against the yen is, and whether that position is already extreme.
 - Whether the yen is starting to strengthen, the first sign of a possible unwind.
 
 It turns this into a risk reading from 0 to 100 and a plain verdict. This is not investment advice, it is a thermometer.
@@ -26,7 +26,7 @@ It turns this into a risk reading from 0 to 100 and a plain verdict. This is not
 
 - USD/JPY: the price of the dollar in yen. When it rises, the yen weakens and the carry trade works. When it falls, the yen strengthens, be careful.
 - Fed minus BoJ differential: the rate gap. The wider it is, the more the bet pays.
-- JPY speculative net: the net number of fund contracts on yen futures. A large negative number means funds are betting heavily against the yen.
+- JPY non-commercial net: long minus short contracts in the broad CFTC Legacy non-commercial category. It is not the narrower TFF leveraged-funds category.
 - Unwind risk: the summary. Low, Moderate, Elevated, or Critical.
 - The carry versus unwind gauge: needle on the left, carry dominates, calm. On the right, the ground gets dangerous.
 
@@ -39,7 +39,7 @@ Everything comes from official, public, free sources. The original source is alw
 | Who bets against the yen | CFTC, the US futures regulator (weekly positioning report) |
 | USD/JPY price | European Central Bank (daily reference rates) |
 | US policy rate | Federal Reserve via the FRED database |
-| Japan policy rate | Set in config, adjusted on each Bank of Japan decision |
+| Japan policy rate | Dated config, verified after each Bank of Japan decision |
 
 ## Trust and privacy
 
@@ -58,7 +58,7 @@ Snapshot design. A scheduled job regenerates a local `data.json` from the source
   systemd timer (4 times per day)
         |
         v
-  build_snapshot.py  --(HTTPS)-->  CFTC (Socrata) + ECB (Frankfurter) + FRED (optional)
+  build_snapshot.py  --(HTTPS)-->  CFTC Socrata + ECB Data API + FRED
         |
         v
   /var/lib/yct/data.json   (atomic write, outside the web root)
@@ -70,11 +70,11 @@ Snapshot design. A scheduled job regenerates a local `data.json` from the source
      visitor (only reads data.json, same origin)
 ```
 
-If a source is down, the affected section keeps its previous value, the page never goes blank.
+If a source is down, the affected section keeps its previous value. Its original success timestamp is preserved and the page visibly switches to a degraded state; a new file-generation timestamp can no longer disguise cached data.
 
 ### Note on the CFTC data
 
-Filtering by market name returns two yen contracts (the standard contract and a low-volume micro contract). The builder keeps, per date, only the row with the largest open interest, that is, the standard contract, the only one relevant to carry positioning.
+The query filters directly on CFTC contract market code `097741`, the standard CME Japanese-yen future. It requests 170 weekly rows and rejects a response with less than three years of unique observations. No market-name heuristic or open-interest deduplication is used.
 
 ### Risk score, the formula
 
@@ -92,6 +92,8 @@ Bands: Low (under 30), Moderate (30 to 55), Elevated (55 to 78), Critical (78 an
 web/index.html web/app.css web/app.js   web application served by Apache
 web/data.json                            demo sample (synthetic)
 build_snapshot.py                        snapshot builder, Python stdlib only
+verify_snapshot.py                       validates schema, grain and freshness
+verify_live.py                           compares HTTPS assets with the local bundle
 gen_sample.py                            regenerates the demo sample
 env.example                              configuration template (no secret)
 deploy/yct-snapshot.service              hardened systemd unit
@@ -99,6 +101,8 @@ deploy/yct-snapshot.timer                scheduled trigger
 deploy/yct.l0g.fr.conf                   hardened Apache vhost example
 standalone/carry-yen.html                single-file no-server variant
 RUNBOOK.md                               detailed deployment runbook (French)
+tests/test_yct.py                         regression tests for source and freshness contracts
+.github/workflows/test.yml               minimal CI contract checks
 ```
 
 ## Try it locally, no server
