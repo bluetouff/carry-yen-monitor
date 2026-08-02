@@ -1,7 +1,9 @@
 import csv
 import io
 import json
+import hashlib
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -155,10 +157,29 @@ class ContractTests(unittest.TestCase):
     def test_frontend_uses_accurate_labels_and_current_boj_default(self):
         web = ROOT / "web" if (ROOT / "web").exists() else ROOT
         html = (web / "index.html").read_text(encoding="utf-8")
+        javascript = (web / "app.js").read_text(encoding="utf-8")
         self.assertNotIn("fonds à effet de levier, CTA, macro", html)
         self.assertIn("value=\"1.00\"", html)
         self.assertIn("contrat CME 097741", html)
         self.assertIn("pas taille mondiale du carry", html)
+        self.assertIn('fmt(diff,3)+" pts"', javascript)
+        self.assertIn('fmt(diff*100,1)+" pb', javascript)
+        self.assertIn("de notionnel net", javascript)
+
+    def test_frontend_assets_are_cache_busted_by_their_content_hash(self):
+        web = ROOT / "web" if (ROOT / "web").exists() else ROOT
+        html = (web / "index.html").read_text(encoding="utf-8")
+        for name in ("app.css", "app.js"):
+            digest = hashlib.sha256((web / name).read_bytes()).hexdigest()[:12]
+            match = re.search(r'%s\?v=([0-9a-f]{12})' % re.escape(name), html)
+            self.assertIsNotNone(match, "%s sans version de contenu" % name)
+            self.assertEqual(match.group(1), digest)
+
+    def test_apache_revalidates_html_and_assets(self):
+        config = (ROOT / "deploy" / "yct.l0g.fr.conf").read_text(encoding="utf-8")
+        activation = (ROOT / "deploy" / "activate-release.sh").read_text(encoding="utf-8")
+        self.assertIn('Header always set Cache-Control "no-cache, max-age=0, must-revalidate"', config)
+        self.assertIn("apache2ctl configtest", activation)
 
     def test_builder_no_longer_depends_on_frankfurter(self):
         source = (ROOT / "build_snapshot.py").read_text(encoding="utf-8")

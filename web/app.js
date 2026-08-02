@@ -128,7 +128,7 @@
 
       if(state.spot){
         var notB = Math.abs(net)*CONTRACT_YEN/state.spot/1e9;
-        $("notional").textContent = "≈ "+fmt(notB,1)+" Md$ "+(net<0?"de short yen":"de long yen")+" CME";
+        $("notional").textContent = "≈ "+fmt(notB,1)+" Md$ de notionnel net "+(net<0?"short":"long")+" sur le futur CME";
       }
 
       var pts = cot.map(function(c,i){return {x:i,y:c.net};});

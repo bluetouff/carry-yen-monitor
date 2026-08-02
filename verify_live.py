@@ -61,6 +61,8 @@ def main():
                     errors.append("CSP de production incomplete")
                 if "max-age=63072000" not in headers.get("strict-transport-security", ""):
                     errors.append("HSTS de production incomplet")
+                if "no-cache" not in headers.get("cache-control", ""):
+                    errors.append("index.html doit etre revalide (Cache-Control no-cache absent)")
         except Exception as exc:  # noqa: BLE001
             errors.append("%s illisible : %s" % (name, exc))
 
