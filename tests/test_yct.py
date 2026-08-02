@@ -298,6 +298,28 @@ class HttpClientTests(unittest.TestCase):
 
 
 class TransactionTests(unittest.TestCase):
+    def test_schema_two_migration_compares_only_fields_that_existed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = run_paths(directory)
+            legacy_snapshot = {
+                "schema_version": 2,
+                "generated": "2026-08-02T07:00:00Z",
+                "cot": [
+                    {"d": row["d"], "net": row["net"], "oi": row["oi"]}
+                    for row in position_rows("legacy")
+                ],
+                "fx": fx_rows(),
+                "rates": {"fed": 3.625, "boj": 1.0},
+                "spot": 160.2351,
+                "sources": {},
+            }
+            Path(paths["OUT_PATH"]).write_text(json.dumps(legacy_snapshot), encoding="utf-8")
+            self.assertEqual(run_successfully(paths), 0)
+            migrated = json.loads(Path(paths["OUT_PATH"]).read_text(encoding="utf-8"))
+        self.assertEqual(migrated["schema_version"], 3)
+        self.assertEqual(migrated["cot"][-1]["long"], 101271)
+        self.assertEqual(migrated["cot"][-1]["short"], 264683)
+
     def test_first_healthy_run_publishes_schema_three_and_status(self):
         with tempfile.TemporaryDirectory() as directory:
             paths = run_paths(directory)

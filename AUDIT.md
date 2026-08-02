@@ -72,6 +72,7 @@ réécrire `data.json` avec un statut dégradé.
 - La formule et le notionnel du contrat sont définis une seule fois côté Python, incorporés au snapshot et consommés sans valeur de secours silencieuse par le navigateur.
 - `tools/release.py` construit une archive à liste blanche, cherche des secrets et vérifie `SOURCE_SHA` plus `SHA256SUMS`.
 - Les tests exécutés dans une release extraite désactivent le bytecode puis le manifeste est revérifié, afin qu'aucun `__pycache__` ne puisse atteindre l'activation.
+- La migration unique du schéma 2 compare seulement les champs historiques réellement disponibles (`net/oi`); dès le schéma 3, les révisions `long/short/net/oi` sont toutes contrôlées.
 - L'activation sauvegarde et restaure ensemble builder, validateur, calendrier, timer, service, vhost, snapshots et assets.
 - `verify_live.py` contrôle désormais `status.json` et, si actif, `market.json` en plus des assets, en-têtes et données.
 

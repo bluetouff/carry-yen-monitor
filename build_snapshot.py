@@ -675,6 +675,9 @@ def main(now=None):
     if any(name in errors for name in required):
         status["error_code"] = "required-source-failed"
         atomic_write(status_path, status)
+        log("publication bloquee : sources requises en echec (%s)" % ", ".join(
+            name for name in required if name in errors
+        ))
         return 1 if previous else 2
 
     cot = values["cot"]
@@ -682,9 +685,15 @@ def main(now=None):
     fx, max_fx_change = values["fx"]
     fed, lower, upper, fed_as_of, fed_source = values["fed"]
 
+    position_revision_fields = ("long", "short", "net", "oi") \
+        if previous.get("schema_version") == 3 else ("net", "oi")
+    if previous and previous.get("schema_version") != 3:
+        log("migration du snapshot schema %s : comparaison historique limitee a net/oi" % (
+            previous.get("schema_version", "inconnu")
+        ))
     revision_specs = {
-        "cot": (previous.get("cot"), cot, ("long", "short", "net", "oi"), 14),
-        "tff": (previous.get("tff"), tff, ("long", "short", "net", "oi"), 14),
+        "cot": (previous.get("cot"), cot, position_revision_fields, 14),
+        "tff": (previous.get("tff"), tff, position_revision_fields, 14),
         "fx": (previous.get("fx"), fx, ("v",), 10),
     }
     revisions = {}
@@ -693,6 +702,7 @@ def main(now=None):
         revisions[name] = revised
         status["sources"][name]["revised_dates"] = revised
         if historical:
+            log("%s : %d revision(s) historique(s), promotion bloquee" % (name, len(historical)))
             status["sources"][name].update({
                 "status": "failed",
                 "error_code": "historical-revision",
