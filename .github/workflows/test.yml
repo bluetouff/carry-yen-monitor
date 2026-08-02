@@ -1,0 +1,27 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python syntax and unit tests
+        run: |
+          python -m py_compile build_snapshot.py verify_snapshot.py verify_live.py tests/test_yct.py
+          python -m unittest discover -s tests -v
+      - name: Browser JavaScript syntax
+        run: node --check web/app.js
+      - name: Demo snapshot generation
+        run: python gen_sample.py

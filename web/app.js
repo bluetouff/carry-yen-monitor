@@ -1,7 +1,7 @@
 (function(){
   "use strict";
   var CONTRACT_YEN = 12500000;
-  var state = { spot:null, fxSeries:[], cot:[], move4w:null, generated:null };
+  var state = { spot:null, fxSeries:[], cot:[], move4w:null, generated:null, sources:{}, health:null };
 
   var $ = function(id){ return document.getElementById(id); };
   function fmt(n,d){ if(n===null||n===undefined||isNaN(n)) return "—"; return Number(n).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}); }
@@ -19,6 +19,8 @@
         if(j.rates.fed!==null && j.rates.fed!==undefined) $("iFed").value = j.rates.fed;
       }
       state.generated = j.generated || null;
+      state.sources = j.sources || {};
+      state.health = j.health || null;
       return j;
     });
   }
@@ -57,7 +59,36 @@
   }
 
   // ---------- rendu ----------
-  function status(ok,msg){ $("statusDot").className = "dot"+(ok?" live":""); $("statusTxt").textContent = msg; }
+  function status(level,msg){
+    $("statusDot").className = "dot"+(level==="ok"?" live":(level==="warn"?" warn":""));
+    $("statusTxt").textContent = msg;
+  }
+
+  function sourceStatusLabel(value){
+    return {
+      "fresh":"à jour",
+      "verified-config":"vérifié",
+      "cached":"en cache",
+      "fallback":"repli config",
+      "stale-config":"à revérifier",
+      "sample":"échantillon"
+    }[value] || "indisponible";
+  }
+
+  function renderSourceHealth(){
+    var el = $("sourceHealth");
+    if(!el) return;
+    el.textContent = "";
+    var defs = [["cot","CFTC"],["fx","BCE"],["fed","Fed"],["boj","BoJ"]];
+    defs.forEach(function(def){
+      var meta = state.sources[def[0]] || {};
+      var chip = document.createElement("span");
+      var good = meta.status === "fresh" || meta.status === "verified-config";
+      chip.className = "sourcechip "+(good?"sourceok":"sourcewarn");
+      chip.textContent = def[1]+" · "+sourceStatusLabel(meta.status)+(meta.data_as_of?" au "+meta.data_as_of:"");
+      el.appendChild(chip);
+    });
+  }
 
   function render(){
     var boj = parseFloat($("iBoj").value)||0, fed = parseFloat($("iFed").value)||0;
@@ -74,8 +105,8 @@
       if(fx.length>22){ state.move4w = ((state.spot/fx[fx.length-21].v)-1)*100; }
     } else { $("kSpot").textContent="—"; }
 
-    $("kDiff").textContent = fmt(diff,2)+" pt";
-    $("kDiffSub").textContent = "≈ "+fmt(diff*100,0)+" pb de portage brut";
+    $("kDiff").textContent = fmt(diff,3)+" pts";
+    $("kDiffSub").textContent = fmt(diff*100,1)+" pb de portage brut";
 
     var cot = state.cot, latest = cot.length?cot[cot.length-1]:null;
     if(latest){
@@ -97,7 +128,7 @@
 
       if(state.spot){
         var notB = Math.abs(net)*CONTRACT_YEN/state.spot/1e9;
-        $("notional").textContent = "≈ "+fmt(notB,1)+" Md$ "+(net<0?"de short yen":"de long yen");
+        $("notional").textContent = "≈ "+fmt(notB,1)+" Md$ "+(net<0?"de short yen":"de long yen")+" CME";
       }
 
       var pts = cot.map(function(c,i){return {x:i,y:c.net};});
@@ -121,6 +152,7 @@
 
     computeRisk(diff);
     computeCalc(diff);
+    renderSourceHealth();
   }
 
   function computeRisk(diff){
@@ -136,7 +168,7 @@
 
     $("c2").textContent = (state.move4w!==null?signed(state.move4w,1)+"%":"—");
     $("f2").style.width = appro+"%";
-    $("c3").textContent = fmt(diff,2)+" pt";
+    $("c3").textContent = fmt(diff,3)+" pts";
     $("f3").style.width = compress+"%";
 
     var risk = Math.round(crowd*0.45 + appro*0.35 + compress*0.20);
@@ -161,11 +193,11 @@
     var move = parseFloat($("iMove").value)||0;
     var carry = diff*lev;
     var total = (diff + move)*lev;
-    $("oCarry").textContent = signed(carry,2)+"%";
+    $("oCarry").textContent = signed(carry,3)+"%";
     $("oCarry").className = "ov "+(carry>=0?"down":"up");
-    $("oTotal").textContent = signed(total,2)+"%";
+    $("oTotal").textContent = signed(total,3)+"%";
     $("oTotal").className = "ov "+(total>=0?"down":"up");
-    $("oBreak").textContent = "-"+fmt(diff,2)+"%";
+    $("oBreak").textContent = "-"+fmt(diff,3)+"%";
     if(state.spot){ $("oLevel").textContent = fmt(state.spot*(1-diff/100),2); }
     else { $("oLevel").textContent="—"; }
   }
@@ -176,14 +208,24 @@
 
   // ---------- init ----------
   $("ts").textContent = "Page chargée le " + new Date().toLocaleString("fr-FR");
-  status(false,"chargement du snapshot...");
+  status("error","chargement du snapshot...");
 
   loadSnapshot().then(function(j){
     render();
     var when = j.generated ? new Date(j.generated).toLocaleString("fr-FR") : "—";
-    status(true, "snapshot du "+when);
+    if(j.health && j.health.status === "ok"){
+      status("ok", "sources contrôlées · snapshot du "+when);
+    } else if(j.sources){
+      var degraded = Object.keys(j.sources).filter(function(key){
+        var s = j.sources[key] && j.sources[key].status;
+        return s !== "fresh" && s !== "verified-config";
+      });
+      status("warn", "snapshot dégradé"+(degraded.length?" · "+degraded.join(", "):"")+" · "+when);
+    } else {
+      status("warn", "snapshot sans traçabilité par source · "+when);
+    }
   }).catch(function(){
     render();
-    status(false, "snapshot indisponible, calculateur seul");
+    status("error", "snapshot indisponible, calculateur seul");
   });
 })();

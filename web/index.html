@@ -21,7 +21,7 @@
   <div class="kpis" id="kpis">
     <div class="kpi"><div class="lbl">USD / JPY</div><div class="val" id="kSpot">...</div><div class="sub" id="kSpotSub">réf. BCE quotidienne</div></div>
     <div class="kpi"><div class="lbl">Différentiel Fed - BoJ</div><div class="val" id="kDiff">...</div><div class="sub" id="kDiffSub">carry brut annualisé</div></div>
-    <div class="kpi"><div class="lbl">Net spéculatif JPY (CFTC)</div><div class="val" id="kNet">...</div><div class="sub" id="kNetSub">contrats non-commerciaux</div></div>
+    <div class="kpi"><div class="lbl">Net non-commercial JPY</div><div class="val" id="kNet">...</div><div class="sub" id="kNetSub">CFTC Legacy · contrat CME 097741</div></div>
     <div class="kpi"><div class="lbl">Risque de débouclage</div><div class="val" id="kRisk">...</div><div class="sub" id="kRiskSub">composite heuristique</div></div>
   </div>
 
@@ -29,7 +29,7 @@
   <div class="grid2">
     <section class="card">
       <h2>Qui attaque le yen, positionnement CFTC</h2>
-      <div class="cap">Position nette des non-commerciaux (fonds à effet de levier, CTA, macro) sur le futur yen au CME. Net short = pari contre le yen, le carry est actif. Un reflux du short signale un débouclage.</div>
+      <div class="cap">Position nette de la catégorie large « non-commercial » du rapport Legacy sur le futur yen standard au CME. Elle ne se confond pas avec la catégorie TFF « leveraged funds ». Net short = pari contre le yen ; un reflux du short peut signaler un débouclage.</div>
       <div class="gauge">
         <span class="gnum" id="netBig">...</span><span class="gtag" id="netTag">...</span>
         <div class="meterrow">
@@ -37,7 +37,7 @@
           <div class="track"><div class="fill" id="crowdFill" style="width:0%;background:var(--yen)"></div></div>
         </div>
         <div class="meterrow">
-          <div class="ml"><span>notionnel net estimé</span><span id="notional">...</span></div>
+          <div class="ml"><span>notionnel net du futur CME, pas taille mondiale du carry</span><span id="notional">...</span></div>
         </div>
       </div>
       <div style="margin-top:18px">
@@ -72,8 +72,8 @@
     <section class="card calc">
       <h2>Calculateur de carry</h2>
       <div class="calcgrid">
-        <div><label>Taux BoJ (%)</label><input id="iBoj" type="number" step="0.05" value="0.75"></div>
-        <div><label>Taux Fed (médiane, %)</label><input id="iFed" type="number" step="0.05" value="3.625"></div>
+        <div><label>Cible BoJ (%)</label><input id="iBoj" type="number" step="0.05" value="1.00"></div>
+        <div><label>Milieu de cible Fed (%)</label><input id="iFed" type="number" step="0.05" value="3.625"></div>
         <div><label>Levier</label><input id="iLev" type="number" step="0.5" value="1"></div>
         <div><label>Mouvement USD/JPY anticipé (%)</label><input id="iMove" type="number" step="0.5" value="0"></div>
       </div>
@@ -88,7 +88,7 @@
 
     <section class="card">
       <h2>USD/JPY, 12 mois</h2>
-      <div class="cap">Référence quotidienne BCE. Une baisse (yen plus fort) sous les moyennes longues est le premier signal technique d'un débouclage.</div>
+      <div class="cap">Référence quotidienne BCE dérivée de EUR/JPY ÷ EUR/USD, pas un spot temps réel. Une baisse correspond à un yen plus fort.</div>
       <div id="fxChart" style="margin-top:8px"></div>
       <div class="chartcap"><span id="fxStart"></span><span id="fxRange">...</span><span id="fxEnd"></span></div>
     </section>
@@ -111,11 +111,13 @@
 
   <section class="card">
     <h2>Sources et méthode</h2>
+    <div class="sourcehealth" id="sourceHealth" aria-label="Fraîcheur des sources"></div>
     <div class="sources">
-      <p><b style="color:var(--text)">CFTC</b> Commitments of Traders, Legacy Futures Only (dataset 6dca-aqww). Position nette non-commerciale = longs moins shorts sur le futur yen CME. Publié chaque vendredi, arrêté au mardi. Régénéré côté serveur via l'API Socrata.</p>
-      <p><b style="color:var(--text)">BCE</b> taux de référence quotidiens (USD/JPY dérivé), récupérés côté serveur, sans clé d'API et sans appel tiers depuis le navigateur.</p>
-      <p><b style="color:var(--text)">Taux directeurs</b> Fed depuis FRED (DFEDTARU et DFEDTARL, médiane) si une clé est configurée, sinon valeurs du snapshot. BoJ depuis la configuration serveur. Champs éditables pour scénarios.</p>
-      <p><b style="color:var(--text)">Notionnel</b> contrats nets x 12 500 000 ¥ converti au spot. Le composite de risque est une heuristique de surveillance, pas une mesure officielle.</p>
+      <p><b style="color:var(--text)">CFTC</b> <a href="https://publicreporting.cftc.gov/resource/6dca-aqww.json" rel="noopener noreferrer">Commitments of Traders, Legacy Futures Only</a>. La requête cible directement <code>cftc_contract_market_code = '097741'</code>. Position nette non-commerciale = longs moins shorts. Rapport arrêté au mardi et publié le vendredi.</p>
+      <p><b style="color:var(--text)">BCE</b> <a href="https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html" rel="noopener noreferrer">taux de référence officiels</a>. USD/JPY = JPY par EUR divisé par USD par EUR. Ce fixing quotidien informatif n'est pas un cours temps réel.</p>
+      <p><b style="color:var(--text)">Fed</b> cible via les séries officielles FRED <a href="https://fred.stlouisfed.org/series/DFEDTARL" rel="noopener noreferrer">DFEDTARL</a> et <a href="https://fred.stlouisfed.org/series/DFEDTARU" rel="noopener noreferrer">DFEDTARU</a>. Le tableau affiche le milieu de la fourchette.</p>
+      <p><b style="color:var(--text)">BoJ</b> cible configurée avec date et URL de vérification d'après les <a href="https://www.boj.or.jp/en/mopo/mpmdeci/index.htm" rel="noopener noreferrer">décisions officielles</a>. Une configuration trop ancienne dégrade explicitement le statut.</p>
+      <p><b style="color:var(--text)">Notionnel</b> contrats nets × 12 500 000 ¥, convertis avec la référence BCE. Il s'agit du notionnel net de ce futur CME, pas d'une estimation du carry trade mondial. Le score est une heuristique de surveillance.</p>
       <p style="color:var(--faint)">Pour aller plus loin sur la taille réelle du carry global et l'exposition Treasuries: BIS Quarterly Review, données TIC du Treasury, bilan BoJ.</p>
     </div>
   </section>
