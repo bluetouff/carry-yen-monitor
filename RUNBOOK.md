@@ -74,7 +74,21 @@ Le SHA doit être strictement identique à celui validé sur le poste de travail
 
 ## 4. Sauvegarde obligatoire de la production
 
-Créer un répertoire horodaté explicite sous `/var/backups/yct/`, puis sauvegarder les quatre surfaces avant mutation:
+La voie recommandée est le script transactionnel inclus dans la release. Il
+vérifie le SHA et le checkout, crée la sauvegarde ci-dessous, arrête brièvement
+le timer, promeut et valide le backend avant le front, puis restaure
+automatiquement l'ancienne version au premier échec:
+
+```bash
+sudo EXPECTED_SHA=<SHA> SOURCE_DIR=/home/bluetouff/yct-release-<SHA> \
+  /home/bluetouff/yct-release-<SHA>/deploy/activate-release.sh
+```
+
+La sortie `OK` donne le chemin exact de sauvegarde. Les étapes manuelles qui
+suivent documentent ce que le script exécute et restent utilisables pour un
+diagnostic ou un rollback contrôlé.
+
+Créer un répertoire horodaté explicite sous `/var/backups/yct/`, puis sauvegarder les surfaces critiques avant mutation:
 
 ```bash
 sudo mkdir -p /var/backups/yct/2026-08-02T0700Z
