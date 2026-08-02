@@ -6,20 +6,20 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Carry Yen, moniteur du carry trade JPY et du positionnement spéculatif</title>
-<link rel="stylesheet" href="app.css?v=bb62b50c7022">
+<link rel="stylesheet" href="app.css?v=7c84df4ceef5">
 </head>
 <body>
 <div class="wrap">
 
   <header class="tape">
-    <div class="brand"><b>鈴</b> Carry <b>Yen</b> <span class="v">/ moniteur</span></div>
+    <h1 class="brand"><b>鈴</b> Carry <b>Yen</b> <span class="v">/ moniteur</span></h1>
     <div class="tag">positionnement spéculatif JPY &middot; différentiel de taux &middot; risque de débouclage</div>
     <div class="pill"><span class="dot" id="statusDot"></span><span id="statusTxt">chargement...</span></div>
   </header>
 
   <!-- KPI principaux -->
   <div class="kpis" id="kpis">
-    <div class="kpi"><div class="lbl">USD / JPY</div><div class="val" id="kSpot">...</div><div class="sub" id="kSpotSub">réf. BCE quotidienne</div></div>
+    <div class="kpi"><div class="lbl">USD / JPY</div><div class="val" id="kSpot">...</div><div class="sub" id="kSpotSub">réf. BCE quotidienne</div><div class="sub market" id="kMarketSub" hidden></div></div>
     <div class="kpi"><div class="lbl">Différentiel Fed - BoJ</div><div class="val" id="kDiff">...</div><div class="sub" id="kDiffSub">carry brut annualisé</div></div>
     <div class="kpi"><div class="lbl">Net non-commercial JPY</div><div class="val" id="kNet">...</div><div class="sub" id="kNetSub">CFTC Legacy · contrat CME 097741</div></div>
     <div class="kpi"><div class="lbl">Risque de débouclage</div><div class="val" id="kRisk">...</div><div class="sub" id="kRiskSub">composite heuristique</div></div>
@@ -39,10 +39,17 @@
         <div class="meterrow">
           <div class="ml"><span>notionnel net du futur CME, pas taille mondiale du carry</span><span id="notional">...</span></div>
         </div>
+        <div class="meterrow">
+          <div class="ml"><span>TFF « leveraged funds », série distincte</span><span id="tffNet">...</span></div>
+        </div>
       </div>
       <div style="margin-top:18px">
+        <div class="series-toggle" aria-label="Série de positionnement affichée">
+          <button type="button" id="toggleLegacy" class="active" aria-pressed="true">Legacy non-commercial</button>
+          <button type="button" id="toggleTff" aria-pressed="false">TFF leveraged funds</button>
+        </div>
         <div id="cotChart"></div>
-        <div class="chartcap"><span id="cotStart"></span><span>net non-commercial, contrats (12,5 M¥ pièce)</span><span id="cotEnd"></span></div>
+        <div class="chartcap"><span id="cotStart"></span><span id="cotChartLabel">net non-commercial, contrats (12,5 M¥ pièce)</span><span id="cotEnd"></span></div>
       </div>
     </section>
 
@@ -94,39 +101,27 @@
     </section>
   </div>
 
-  <!-- Repères -->
-  <section class="card" style="margin-bottom:26px">
-    <h2>Repères et mémoire du marché</h2>
-    <table>
-      <thead><tr><th>Repère</th><th>Niveau / valeur</th><th>Lecture</th></tr></thead>
-      <tbody>
-        <tr><td>Pic du différentiel 2024</td><td>~525 pb</td><td>USD/JPY à 161,9 (juillet 2024), carry au sommet</td></tr>
-        <tr><td>Débouclage août 2024</td><td>161,0 vers 141,7</td><td>hausse BoJ 31/07 + emploi US faible, Nikkei -12,4% le 5 août</td></tr>
-        <tr><td>Mécanique du débouclage</td><td>FX d'abord</td><td>yen racheté, actifs à levier vendus, liquidité qui s'évapore</td></tr>
-        <tr><td>Niveau pivot suivi</td><td>~160 / MM200</td><td>cassure haussière vs accélération du yen</td></tr>
-        <tr><td>Repli des shorts (2008, 2015, 2020)</td><td>brutal</td><td>les reflux de carry amplifient les corrections de marché</td></tr>
-      </tbody>
-    </table>
-  </section>
-
   <section class="card">
     <h2>Sources et méthode</h2>
     <div class="sourcehealth" id="sourceHealth" aria-label="Fraîcheur des sources"></div>
     <div class="sources">
-      <p><b style="color:var(--text)">CFTC</b> <a href="https://publicreporting.cftc.gov/resource/6dca-aqww.json" rel="noopener noreferrer">Commitments of Traders, Legacy Futures Only</a>. La requête cible directement <code>cftc_contract_market_code = '097741'</code>. Position nette non-commerciale = longs moins shorts. Rapport arrêté au mardi et publié le vendredi.</p>
+      <p><b style="color:var(--text)">CFTC Legacy</b> <a href="https://publicreporting.cftc.gov/resource/6dca-aqww.json" rel="noopener noreferrer">Legacy Futures Only</a>. La requête cible directement <code>cftc_contract_market_code = '097741'</code>. Position nette non-commerciale = longs moins shorts.</p>
+      <p><b style="color:var(--text)">CFTC TFF</b> <a href="https://publicreporting.cftc.gov/resource/gpe5-46if.json" rel="noopener noreferrer">TFF Futures Only</a>. La série « leveraged funds » est affichée séparément et n'est jamais fusionnée avec la catégorie Legacy.</p>
       <p><b style="color:var(--text)">BCE</b> <a href="https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html" rel="noopener noreferrer">taux de référence officiels</a>. USD/JPY = JPY par EUR divisé par USD par EUR. Ce fixing quotidien informatif n'est pas un cours temps réel.</p>
       <p><b style="color:var(--text)">Fed</b> cible via les séries officielles FRED <a href="https://fred.stlouisfed.org/series/DFEDTARL" rel="noopener noreferrer">DFEDTARL</a> et <a href="https://fred.stlouisfed.org/series/DFEDTARU" rel="noopener noreferrer">DFEDTARU</a>. Le tableau affiche le milieu de la fourchette.</p>
       <p><b style="color:var(--text)">BoJ</b> cible configurée avec date et URL de vérification d'après les <a href="https://www.boj.or.jp/en/mopo/mpmdeci/index.htm" rel="noopener noreferrer">décisions officielles</a>. Une configuration trop ancienne dégrade explicitement le statut.</p>
       <p><b style="color:var(--text)">Notionnel</b> contrats nets × 12 500 000 ¥, convertis avec la référence BCE. Il s'agit du notionnel net de ce futur CME, pas d'une estimation du carry trade mondial. Le score est une heuristique de surveillance.</p>
+      <p><b style="color:var(--text)">Spot de marché optionnel</b> une cotation Massive peut compléter la référence BCE. Elle reste séparée, horodatée et récupérée côté serveur; son absence ne dégrade pas le snapshot canonique.</p>
+      <p><b style="color:var(--text)">Formule</b> version <code>1.0.0</code>. Pondérations inchangées et explicitement qualifiées d'heuristiques tant qu'un backtest documenté n'a pas validé une nouvelle calibration.</p>
       <p style="color:var(--faint)">Pour aller plus loin sur la taille réelle du carry global et l'exposition Treasuries: BIS Quarterly Review, données TIC du Treasury, bilan BoJ.</p>
     </div>
   </section>
 
   <footer>
-    Architecture snapshot. Le navigateur ne lit qu'un fichier local régénéré par le serveur, aucun tiers contacté, aucune clé exposée. <span id="ts"></span>
+    Architecture snapshot. Le navigateur ne lit que des JSON de même origine régénérés côté serveur, aucun tiers contacté, aucune clé exposée. <span id="ts"></span>
   </footer>
 
 </div>
-<script src="app.js?v=0b1e6cbb5aa2"></script>
+<script src="app.js?v=f807a418bfdd"></script>
 </body>
 </html>

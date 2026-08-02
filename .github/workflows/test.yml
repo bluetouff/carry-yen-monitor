@@ -19,11 +19,16 @@ jobs:
           python-version: "3.12"
       - name: Python syntax and unit tests
         run: |
-          python -m py_compile build_snapshot.py verify_snapshot.py verify_live.py tests/test_yct.py
+          python -m py_compile build_snapshot.py yct_quality.py verify_snapshot.py verify_live.py gen_sample.py tools/release.py tests/test_yct.py
           python -m unittest discover -s tests -v
       - name: Browser JavaScript syntax
         run: |
           node --check web/app.js
           bash -n deploy/activate-release.sh
+      - name: Exact release artifact and secret guard
+        run: |
+          sha=$(git rev-parse HEAD)
+          python tools/release.py build --output /tmp/yct-dist
+          python tools/release.py verify-archive --archive "/tmp/yct-dist/yct-release-${sha}.tar.gz" --expected-sha "$sha"
       - name: Demo snapshot generation
         run: python gen_sample.py

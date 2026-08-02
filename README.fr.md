@@ -27,6 +27,7 @@ Il en tire un indicateur de risque de 0 à 100 et un verdict en clair. Ce n'est 
 - USD/JPY: le prix du dollar en yens. Quand il monte, le yen s'affaiblit, le carry trade fonctionne. Quand il baisse, le yen se renforce, attention.
 - Différentiel Fed contre BoJ: l'écart de taux. Plus il est large, plus le pari rapporte.
 - Net non-commercial JPY: longs moins shorts dans la catégorie large du rapport CFTC Legacy. Ce n'est pas la catégorie plus étroite « leveraged funds » du rapport TFF.
+- TFF leveraged funds: seconde lecture du même contrat CME, affichée séparément et jamais fusionnée avec le Legacy.
 - Risque de débouclage: la synthèse. Faible, Modéré, Élevé ou Critique.
 - La jauge carry contre débouclage: l'aiguille à gauche, le carry domine, tranquille. À droite, le terrain devient dangereux.
 
@@ -37,6 +38,7 @@ Tout provient de sources officielles, publiques et gratuites. On préfère toujo
 | Donnée | Source officielle |
 |---|---|
 | Qui parie contre le yen | CFTC, le régulateur américain des marchés à terme (rapport hebdomadaire des positions) |
+| Position des leveraged funds | CFTC, rapport TFF Futures Only, série distincte |
 | Prix USD/JPY | Banque centrale européenne (taux de référence quotidiens) |
 | Taux directeur américain | Réserve fédérale via la base FRED |
 | Taux directeur japonais | Configuration datée et vérifiée après chaque décision de la Banque du Japon |
@@ -46,35 +48,36 @@ Tout provient de sources officielles, publiques et gratuites. On préfère toujo
 Le tableau de bord a été pensé pour être sobre et respectueux:
 
 - Aucune publicité, aucun pisteur, aucun cookie.
-- Votre navigateur ne contacte aucun service tiers. Le serveur prépare un fichier de données et votre navigateur ne lit que celui-là. Les fournisseurs de données ne voient donc jamais votre adresse IP.
+- Votre navigateur ne contacte aucun service tiers. Le serveur prépare les JSON de données et d'état, puis le navigateur les lit sur le domaine YCT. Les fournisseurs de données ne voient donc jamais votre adresse IP.
 - Aucune clé ni aucun secret n'est exposé.
 - Tout le code est ouvert, vous pouvez le lire et le vérifier.
 
 ## Architecture, pour les techniciens
 
-Conception snapshot. Un job planifié régénère un fichier `data.json` local à partir des sources, plusieurs fois par jour. La page statique ne lit que ce fichier, en même origine.
+Conception transactionnelle. Un job contrôle les sources plusieurs fois par jour. Il ne remplace `data.json` qu'après validation complète; `status.json` décrit chaque tentative et `market.json` reçoit, si elle est configurée, une cotation Massive séparée.
 
 ```
   timer systemd (4 fois par jour)
         |
         v
-  build_snapshot.py  --(HTTPS)-->  CFTC Socrata + API Data BCE + FRED
+  build_snapshot.py  --(HTTPS)-->  CFTC Legacy/TFF + API Data BCE + FRED
         |
-        v
-  /var/lib/yct/data.json   (ecriture atomique, hors racine web)
+        +--> candidate.json --> validation --> data.json
+        +--> status.json
+        +--> market.json (Massive optionnel)
         ^
-        | Alias /data.json (lecture seule)
+        | Alias JSON en lecture seule
   Apache 443  -->  web/index.html + app.css + app.js
         ^
         | HTTPS, CSP default-src 'none'
-     visiteur (ne lit que data.json en meme origine)
+     visiteur (ne lit que le domaine YCT)
 ```
 
-Si une source tombe, la section concernée garde sa valeur précédente. Son véritable horodatage de succès est conservé et la page passe visiblement en mode dégradé: une nouvelle date de génération ne peut plus faire passer une donnée en cache pour une donnée fraîche.
+Si une source requise tombe, `data.json` ne change pas. La page conserve le dernier snapshot intégralement sain et montre l'échec du dernier contrôle à partir de `status.json`. Si les observations sont identiques, `data.json` reste identique octet pour octet.
 
 ### Précision sur la donnée CFTC
 
-La requête cible directement le code CFTC `097741`, le futur yen standard du CME. Elle demande 170 observations hebdomadaires et rejette toute réponse qui ne contient pas au moins trois ans de dates uniques. Il n'y a plus d'heuristique sur le nom du marché ni de déduplication par open interest.
+Les requêtes Legacy et TFF ciblent directement le code CFTC `097741`, le futur yen standard du CME. Chacune exige exactement 170 observations hebdomadaires complètes et la semaine attendue d'après le calendrier officiel CFTC. Les catégories sont conservées séparément.
 
 ### Indicateur de risque, la formule
 
@@ -84,7 +87,7 @@ Score de 0 (carry dominant) à 100 (débouclage), recalculé dans le navigateur:
 - Appréciation du yen sur quatre semaines, poids 0,35: un yen qui se renforce augmente le risque.
 - Compression de l'écart de taux, poids 0,20: plus l'écart se réduit, plus le coussin est mince.
 
-Bandes: Faible (moins de 30), Modéré (30 à 55), Élevé (55 à 78), Critique (78 et plus). Le notionnel est estimé par contrats nets multipliés par 12 500 000 yens, converti au prix courant. C'est une heuristique de surveillance, pas une mesure officielle.
+Bandes: Faible (moins de 30), Modéré (30 à 55), Élevé (55 à 78), Critique (78 et plus). Le notionnel est estimé par contrats nets multipliés par 12 500 000 yens, converti avec la référence BCE. La formule est versionnée `1.0.0` et qualifiée d'heuristique non backtestée.
 
 ## Contenu du dépôt
 
@@ -92,14 +95,17 @@ Bandes: Faible (moins de 30), Modéré (30 à 55), Élevé (55 à 78), Critique 
 web/index.html web/app.css web/app.js   application web servie par Apache
 web/data.json                            echantillon de demonstration (synthetique)
 build_snapshot.py                        builder du snapshot, Python stdlib uniquement
+yct_quality.py                           calendriers et contrats de qualité partagés
+config/source-calendars.json             calendriers officiels CFTC et BoJ versionnés
+config/boj-policy.json                   taux, date et décision BoJ, contrat public unique
 verify_snapshot.py                       valide schema, grain et fraicheur
 verify_live.py                           compare les artefacts HTTPS au bundle local
 gen_sample.py                            regenere l'echantillon de demo
-env.example                              modele de configuration (sans secret)
+env.example                              modele des seules options locales (sans secret)
 deploy/yct-snapshot.service              unite systemd durcie
 deploy/yct-snapshot.timer                declencheur planifie
 deploy/yct.l0g.fr.conf                   exemple de vhost Apache durci
-standalone/carry-yen.html                variante monofichier sans serveur
+tools/release.py                         artefact exact, checksums et détection de secrets
 RUNBOOK.md                               procedure de deploiement detaillee
 tests/test_yct.py                         tests de regression des contrats de source
 .github/workflows/test.yml               CI minimale des contrats
@@ -113,7 +119,7 @@ cd web && python3 -m http.server 8000
 # puis ouvrir http://localhost:8000
 ```
 
-La variante `standalone/carry-yen.html` fonctionne aussi seule, mais elle interroge les API depuis le navigateur (votre IP est alors visible des fournisseurs).
+La version publique garde toutes les requêtes vers les fournisseurs côté serveur. Il n'existe pas de variante qui contacte automatiquement ces services depuis le navigateur.
 
 ## Déploiement en production
 

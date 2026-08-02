@@ -2,8 +2,8 @@
 Description=YCT - declenche la regeneration du snapshot Carry Yen
 
 [Timer]
-# Quelques passages par jour : couvre la publication CFTC du vendredi (~21h30 CET)
-# et la reference BCE quotidienne (~16h CET), avec marge.
+# Quatre passages suffisent. La fraicheur est ensuite validee par rapport aux
+# calendriers officiels CFTC, TARGET/BCE et BoJ, pas par un age generique.
 OnCalendar=*-*-* 06,12,18,23:15
 # Une passe peu apres le boot pour ne pas attendre le prochain creneau.
 OnBootSec=3min

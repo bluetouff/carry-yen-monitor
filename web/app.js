@@ -1,7 +1,10 @@
 (function(){
   "use strict";
-  var CONTRACT_YEN = 12500000;
-  var state = { spot:null, fxSeries:[], cot:[], move4w:null, generated:null, sources:{}, health:null };
+  var state = {
+    spot:null, market:null, fxSeries:[], cot:[], tff:[], cotMode:"cot", move4w:null,
+    generated:null, publishedAt:null, sources:{}, health:null, runStatus:null,
+    methodology:null
+  };
 
   var $ = function(id){ return document.getElementById(id); };
   function fmt(n,d){ if(n===null||n===undefined||isNaN(n)) return "—"; return Number(n).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}); }
@@ -12,6 +15,7 @@
     return fetch("data.json", {cache:"no-store"}).then(function(r){ if(!r.ok) throw 0; return r.json(); }).then(function(j){
       state.fxSeries = (j.fx||[]).filter(function(p){ return p && p.v; });
       state.cot = (j.cot||[]).filter(function(p){ return p && p.d && p.net!==null && p.net!==undefined; });
+      state.tff = (j.tff||[]).filter(function(p){ return p && p.d && p.net!==null && p.net!==undefined; });
       if(state.fxSeries.length){ state.spot = state.fxSeries[state.fxSeries.length-1].v; }
       if(j.spot){ state.spot = j.spot; }
       if(j.rates){
@@ -19,10 +23,26 @@
         if(j.rates.fed!==null && j.rates.fed!==undefined) $("iFed").value = j.rates.fed;
       }
       state.generated = j.generated || null;
+      state.publishedAt = j.published_at || j.generated || null;
       state.sources = j.sources || {};
       state.health = j.health || null;
+      state.methodology = j.methodology || null;
       return j;
     });
+  }
+
+  function loadRunStatus(){
+    return fetch("status.json", {cache:"no-store"}).then(function(r){
+      if(!r.ok) return null;
+      return r.json();
+    }).then(function(j){ state.runStatus = j; return j; }).catch(function(){ return null; });
+  }
+
+  function loadMarket(){
+    return fetch("market.json", {cache:"no-store"}).then(function(r){
+      if(!r.ok) return null;
+      return r.json();
+    }).then(function(j){ state.market = j; return j; }).catch(function(){ return null; });
   }
 
   // ---------- graphiques SVG ----------
@@ -71,6 +91,8 @@
       "cached":"en cache",
       "fallback":"repli config",
       "stale-config":"à revérifier",
+      "failed":"échec du contrôle",
+      "not-configured":"optionnel, non configuré",
       "sample":"échantillon"
     }[value] || "indisponible";
   }
@@ -79,15 +101,38 @@
     var el = $("sourceHealth");
     if(!el) return;
     el.textContent = "";
-    var defs = [["cot","CFTC"],["fx","BCE"],["fed","Fed"],["boj","BoJ"]];
+    var defs = [["cot","CFTC Legacy"],["tff","CFTC TFF"],["fx","BCE"],["fed","Fed"],["boj","BoJ"]];
     defs.forEach(function(def){
-      var meta = state.sources[def[0]] || {};
+      var publishedMeta = state.sources[def[0]] || {};
+      var runMeta = state.runStatus && state.runStatus.sources && state.runStatus.sources[def[0]];
+      var meta = Object.assign({}, publishedMeta, runMeta || {});
       var chip = document.createElement("span");
       var good = meta.status === "fresh" || meta.status === "verified-config";
       chip.className = "sourcechip "+(good?"sourceok":"sourcewarn");
-      chip.textContent = def[1]+" · "+sourceStatusLabel(meta.status)+(meta.data_as_of?" au "+meta.data_as_of:"");
+      chip.textContent = def[1]+" · "+sourceStatusLabel(meta.status)+(meta.data_as_of?" au "+String(meta.data_as_of).slice(0,10):"");
       el.appendChild(chip);
     });
+  }
+
+  function renderPositionChart(){
+    var series = state.cotMode === "tff" ? state.tff : state.cot;
+    var label = state.cotMode === "tff" ? "net TFF leveraged funds, contrats" : "net Legacy non-commercial, contrats";
+    if(!series.length){
+      $("cotChart").innerHTML='<div class="err">série CFTC indisponible</div>';
+      $("cotStart").textContent=""; $("cotEnd").textContent=""; $("cotChartLabel").textContent=label;
+      return;
+    }
+    lineChart($("cotChart"), series.map(function(c,i){return {x:i,y:c.net};}), {
+      id:state.cotMode, color:state.cotMode === "tff" ? "#e0b341" : "#ff6b9d",
+      fmtY:function(v){return (v/1000).toFixed(0)+"k";}
+    });
+    $("cotStart").textContent = series[0].d;
+    $("cotEnd").textContent = series[series.length-1].d;
+    $("cotChartLabel").textContent = label+" (12,5 M¥ pièce)";
+    $("toggleLegacy").className = state.cotMode === "cot" ? "active" : "";
+    $("toggleTff").className = state.cotMode === "tff" ? "active" : "";
+    $("toggleLegacy").setAttribute("aria-pressed", state.cotMode === "cot" ? "true" : "false");
+    $("toggleTff").setAttribute("aria-pressed", state.cotMode === "tff" ? "true" : "false");
   }
 
   function render(){
@@ -104,6 +149,11 @@
       }
       if(fx.length>22){ state.move4w = ((state.spot/fx[fx.length-21].v)-1)*100; }
     } else { $("kSpot").textContent="—"; }
+    var massiveFresh = state.runStatus && state.runStatus.sources && state.runStatus.sources.massive && state.runStatus.sources.massive.status === "fresh";
+    if(state.market && state.market.mid && massiveFresh){
+      $("kMarketSub").hidden = false;
+      $("kMarketSub").textContent = "spot Massive "+fmt(state.market.mid,2)+" · "+String(state.market.data_as_of||"").replace("T"," ").slice(0,16)+" UTC";
+    } else { $("kMarketSub").hidden = true; }
 
     $("kDiff").textContent = fmt(diff,3)+" pts";
     $("kDiffSub").textContent = fmt(diff*100,1)+" pb de portage brut";
@@ -126,19 +176,19 @@
       $("c1").textContent = fmt(crowd,0)+"%";
       $("f1").style.width = crowd+"%";
 
-      if(state.spot){
-        var notB = Math.abs(net)*CONTRACT_YEN/state.spot/1e9;
+      var contractNotional = Number(state.methodology && state.methodology.contract_notional_yen);
+      if(state.spot && Number.isFinite(contractNotional) && contractNotional > 0){
+        var notB = Math.abs(net)*contractNotional/state.spot/1e9;
         $("notional").textContent = "≈ "+fmt(notB,1)+" Md$ de notionnel net "+(net<0?"short":"long")+" sur le futur CME";
-      }
-
-      var pts = cot.map(function(c,i){return {x:i,y:c.net};});
-      lineChart($("cotChart"), pts, {id:"cot", color:"#ff6b9d", fmtY:function(v){return (v/1000).toFixed(0)+"k";}});
-      $("cotStart").textContent = cot[0].d;
-      $("cotEnd").textContent = latest.d;
+      } else { $("notional").textContent = "—"; }
     } else {
       $("kNet").textContent="—"; $("netBig").textContent="—";
-      $("cotChart").innerHTML='<div class="err">positionnement CFTC indisponible</div>';
     }
+    if(state.tff.length){
+      var latestTff = state.tff[state.tff.length-1];
+      $("tffNet").textContent = signed(latestTff.net,0)+" au "+latestTff.d;
+    } else { $("tffNet").textContent = "—"; }
+    renderPositionChart();
 
     if(state.fxSeries.length){
       var fxs = state.fxSeries;
@@ -164,18 +214,33 @@
     }
     var appro = 0;
     if(state.move4w!==null){ appro = Math.max(0,Math.min(100, -state.move4w*22)); }
-    var compress = Math.max(0,Math.min(100, (5.25-diff)/5.25*100));
+    var methodology = state.methodology || {};
+    var weights = methodology.weights || {};
+    var anchor = Number(methodology.rate_differential_anchor);
+    var weightValues = [weights.legacy_crowding,weights.yen_appreciation_4w,weights.rate_compression].map(Number);
+    var validMethod = Number.isFinite(anchor) && anchor > 0 && weightValues.every(Number.isFinite) &&
+      Math.abs(weightValues.reduce(function(total,value){return total+value;},0)-1) < 0.000001 &&
+      typeof methodology.risk_formula_version === "string";
+    var compress = validMethod ? Math.max(0,Math.min(100, (anchor-diff)/anchor*100)) : 0;
 
-    $("c2").textContent = (state.move4w!==null?signed(state.move4w,1)+"%":"—");
+    $("c2").textContent = (state.move4w!==null?signed(-state.move4w,1)+"%":"—");
     $("f2").style.width = appro+"%";
     $("c3").textContent = fmt(diff,3)+" pts";
     $("f3").style.width = compress+"%";
 
-    var risk = Math.round(crowd*0.45 + appro*0.35 + compress*0.20);
+    if(!validMethod){
+      $("kRisk").textContent = "—";
+      $("kRisk").style.color = "var(--gold)";
+      $("kRiskSub").textContent = "méthode indisponible";
+      $("needle").style.left = "50%";
+      $("verdict").textContent = "Score indisponible: contrat méthodologique absent ou invalide.";
+      return;
+    }
+    var risk = Math.round(crowd*weightValues[0] + appro*weightValues[1] + compress*weightValues[2]);
     var band = risk<30?["Faible","var(--ok)"]:risk<55?["Modéré","var(--gold)"]:risk<78?["Élevé","var(--yen)"]:["Critique","var(--yen)"];
     $("kRisk").textContent = risk;
     $("kRisk").style.color = band[1];
-    $("kRiskSub").innerHTML = band[0]+" &middot; surcharge "+fmt(crowd,0)+"%";
+    $("kRiskSub").textContent = band[0]+" · formule v"+methodology.risk_formula_version;
 
     $("needle").style.left = Math.max(2,Math.min(98,risk))+"%";
     var v = risk<30
@@ -205,25 +270,35 @@
   ["iBoj","iFed","iLev","iMove"].forEach(function(id){
     $(id).addEventListener("input", function(){ render(); });
   });
+  $("toggleLegacy").addEventListener("click", function(){ state.cotMode="cot"; renderPositionChart(); });
+  $("toggleTff").addEventListener("click", function(){ state.cotMode="tff"; renderPositionChart(); });
 
   // ---------- init ----------
   $("ts").textContent = "Page chargée le " + new Date().toLocaleString("fr-FR");
   status("error","chargement du snapshot...");
 
-  loadSnapshot().then(function(j){
-    render();
-    var when = j.generated ? new Date(j.generated).toLocaleString("fr-FR") : "—";
-    if(j.health && j.health.status === "ok"){
-      status("ok", "sources contrôlées · snapshot du "+when);
-    } else if(j.sources){
-      var degraded = Object.keys(j.sources).filter(function(key){
-        var s = j.sources[key] && j.sources[key].status;
-        return s !== "fresh" && s !== "verified-config";
-      });
-      status("warn", "snapshot dégradé"+(degraded.length?" · "+degraded.join(", "):"")+" · "+when);
-    } else {
-      status("warn", "snapshot sans traçabilité par source · "+when);
-    }
+  Promise.all([loadSnapshot(), loadRunStatus()]).then(function(results){
+    var j = results[0];
+    var massiveFresh = state.runStatus && state.runStatus.sources && state.runStatus.sources.massive && state.runStatus.sources.massive.status === "fresh";
+    return (massiveFresh ? loadMarket() : Promise.resolve(null)).then(function(){
+      render();
+      var published = state.publishedAt ? new Date(state.publishedAt).toLocaleString("fr-FR") : "—";
+      var checked = state.runStatus && state.runStatus.checked_at ? new Date(state.runStatus.checked_at).toLocaleString("fr-FR") : null;
+      if(state.runStatus && state.runStatus.status !== "ok"){
+        var degraded = Object.keys(state.runStatus.sources||{}).filter(function(key){
+          var s = state.runStatus.sources[key] && state.runStatus.sources[key].status;
+          if(key === "massive" && s === "not-configured") return false;
+          return s !== "fresh" && s !== "verified-config";
+        });
+        status("warn", "dernier contrôle dégradé"+(degraded.length?" · "+degraded.join(", "):"")+" · données saines du "+published);
+      } else if(j.health && j.health.status === "ok"){
+        status("ok", "sources contrôlées"+(checked?" · "+checked:"")+" · publication "+published);
+      } else if(j.sources){
+        status("warn", "snapshot sans statut opérationnel récent · "+published);
+      } else {
+        status("warn", "snapshot sans traçabilité par source · "+published);
+      }
+    });
   }).catch(function(){
     render();
     status("error", "snapshot indisponible, calculateur seul");

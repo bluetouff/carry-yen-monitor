@@ -19,6 +19,8 @@ import math
 import os
 from datetime import datetime, timezone, timedelta
 
+from yct_quality import methodology_contract, snapshot_fingerprint
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "web", "data.json")
 
@@ -72,33 +74,57 @@ def gen_cot(weeks=170):
         net = interp(anchors, x) + jitter(i + 100, 6000)
         oi = interp(oi_anchors, x) + jitter(i + 200, 8000)
         d = last_tue - timedelta(weeks=(weeks - 1 - i))
-        rows.append({"d": d.isoformat(), "net": int(round(net)), "oi": int(round(oi))})
+        net = int(round(net))
+        oi = int(round(oi))
+        base = int(oi * 0.2)
+        rows.append({
+            "d": d.isoformat(),
+            "long": base + max(net, 0),
+            "short": base + max(-net, 0),
+            "net": net,
+            "oi": oi,
+        })
     return rows
 
 
 def main():
     fx = gen_fx()
     cot = gen_cot()
+    tff = []
+    for row in cot:
+        net = int(round(row["net"] * 0.65))
+        base = int(row["oi"] * 0.15)
+        tff.append({
+            "d": row["d"], "long": base + max(net, 0), "short": base + max(-net, 0),
+            "net": net, "oi": row["oi"],
+        })
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     out = {
         "sample": True,
-        "schema_version": 2,
-        "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "health": {"status": "degraded", "checks": {"cot": False, "fx": False, "fed": False, "boj": False}},
-        "rates": {"boj": 1.0, "fed": 3.625, "fed_source": "sample", "boj_source": "sample"},
+        "schema_version": 3,
+        "generated": generated,
+        "published_at": generated,
+        "data_as_of": {"cot": cot[-1]["d"], "tff": tff[-1]["d"], "fx": fx[-1]["d"], "fed": generated[:10], "boj": generated[:10]},
+        "health": {"status": "degraded", "checks": {"cot": False, "tff": False, "fx": False, "fed": False, "boj": False}},
+        "rates": {"boj": 1.0, "fed": 3.625, "fed_lower": 3.5, "fed_upper": 3.75, "fed_source": "sample", "boj_source": "sample"},
         "fx": fx,
         "cot": cot,
+        "tff": tff,
         "spot": fx[-1]["v"],
+        "methodology": methodology_contract(),
         "sources": {
             "cot": {"status": "sample", "data_as_of": cot[-1]["d"]},
+            "tff": {"status": "sample", "data_as_of": tff[-1]["d"]},
             "fx": {"status": "sample", "data_as_of": fx[-1]["d"]},
             "fed": {"status": "sample", "data_as_of": datetime.now(timezone.utc).date().isoformat()},
             "boj": {"status": "sample", "data_as_of": datetime.now(timezone.utc).date().isoformat()},
         },
     }
+    out["data_fingerprint"] = snapshot_fingerprint(out)
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
-    print("echantillon ecrit : %s (%d points FX, %d semaines CFTC, spot %.2f)"
+    print("echantillon ecrit : %s (%d points FX, %d semaines Legacy/TFF, spot %.2f)"
           % (OUT, len(fx), len(cot), out["spot"]))
 
 

@@ -22,7 +22,7 @@ a:hover{background:var(--usd);color:#0a0a0a}
 /* En-tête tape */
 header.tape{display:flex;flex-wrap:wrap;align-items:baseline;gap:14px 22px;
   border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:22px}
-.brand{font-weight:800;font-size:20px;letter-spacing:-.02em}
+.brand{font-weight:800;font-size:20px;letter-spacing:-.02em;margin:0;line-height:inherit}
 .brand b{color:var(--yen)}
 .brand .v{color:var(--dim);font-weight:600}
 .tag{font-family:var(--mono);font-size:11.5px;color:var(--dim);letter-spacing:.02em}
@@ -41,6 +41,7 @@ header.tape{display:flex;flex-wrap:wrap;align-items:baseline;gap:14px 22px;
 .kpi .val{font-family:var(--mono);font-size:28px;font-weight:600;margin-top:7px;letter-spacing:-.01em;
   font-variant-numeric:tabular-nums}
 .kpi .sub{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi .sub.market{color:var(--gold)}
 .up{color:var(--yen)} .down{color:var(--usd)} .flat{color:var(--dim)}
 
 h2{font-size:13px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;
@@ -86,14 +87,13 @@ h2::before{content:"";width:18px;height:2px;background:var(--yen);display:inline
 .out .ol{font-family:var(--mono);font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
 .out .ov{font-family:var(--mono);font-size:18px;font-variant-numeric:tabular-nums;margin-top:3px}
 
-/* tableaux */
-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
-th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
-th{color:var(--dim);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}
-td.r,th.r{text-align:right}
-
 svg{display:block;width:100%;height:auto}
 .chartcap{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:6px}
+.series-toggle{display:flex;gap:7px;margin:0 0 10px;flex-wrap:wrap}
+.series-toggle button{appearance:none;background:var(--panel2);color:var(--dim);border:1px solid var(--line);
+  border-radius:999px;padding:5px 9px;font-family:var(--mono);font-size:10.5px;cursor:pointer}
+.series-toggle button:hover,.series-toggle button:focus-visible{border-color:var(--usd);color:var(--text);outline:none}
+.series-toggle button.active{background:rgba(0,240,208,.09);border-color:rgba(0,240,208,.45);color:var(--usd)}
 
 .note{font-family:var(--mono);font-size:11.5px;color:var(--dim);line-height:1.7}
 .sources{columns:2;column-gap:30px;font-family:var(--mono);font-size:11.5px;color:var(--dim)}

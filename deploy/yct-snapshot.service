@@ -8,8 +8,10 @@ Type=oneshot
 User=yct
 Group=yct
 EnvironmentFile=/etc/yct/env
+Environment=SOURCE_CALENDAR_PATH=/opt/yct/source-calendars.json
+Environment=BOJ_POLICY_PATH=/opt/yct/boj-policy.json
 ExecStart=/usr/bin/python3 /opt/yct/build_snapshot.py
-ExecStartPost=/usr/bin/python3 /opt/yct/verify_snapshot.py /var/lib/yct/data.json
+ExecStartPost=/usr/bin/python3 /opt/yct/verify_snapshot.py /var/lib/yct/data.json --status-path /var/lib/yct/status.json --calendar-path /opt/yct/source-calendars.json --boj-policy-path /opt/yct/boj-policy.json
 
 # --- Durcissement ---
 NoNewPrivileges=true
@@ -41,4 +43,5 @@ SystemCallArchitectures=native
 UMask=0027
 # seul chemin inscriptible : le repertoire du snapshot
 ReadWritePaths=/var/lib/yct
-TimeoutStartSec=120
+# Le builder s'arrete lui-meme apres 90 s; marge incluse pour la validation finale.
+TimeoutStartSec=110

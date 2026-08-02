@@ -27,6 +27,7 @@ It turns this into a risk reading from 0 to 100 and a plain verdict. This is not
 - USD/JPY: the price of the dollar in yen. When it rises, the yen weakens and the carry trade works. When it falls, the yen strengthens, be careful.
 - Fed minus BoJ differential: the rate gap. The wider it is, the more the bet pays.
 - JPY non-commercial net: long minus short contracts in the broad CFTC Legacy non-commercial category. It is not the narrower TFF leveraged-funds category.
+- TFF leveraged funds: a second view of the same CME contract, displayed separately and never merged with Legacy.
 - Unwind risk: the summary. Low, Moderate, Elevated, or Critical.
 - The carry versus unwind gauge: needle on the left, carry dominates, calm. On the right, the ground gets dangerous.
 
@@ -37,6 +38,7 @@ Everything comes from official, public, free sources. The original source is alw
 | Field | Official source |
 |---|---|
 | Who bets against the yen | CFTC, the US futures regulator (weekly positioning report) |
+| Leveraged-fund positions | CFTC TFF Futures Only, kept as a distinct series |
 | USD/JPY price | European Central Bank (daily reference rates) |
 | US policy rate | Federal Reserve via the FRED database |
 | Japan policy rate | Dated config, verified after each Bank of Japan decision |
@@ -46,35 +48,36 @@ Everything comes from official, public, free sources. The original source is alw
 The dashboard is built to be sober and respectful:
 
 - No ads, no trackers, no cookies.
-- Your browser contacts no third-party service. The server prepares a data file and your browser reads only that file. The data providers never see your IP address.
+- Your browser contacts no third-party service. The server prepares data and status JSON files, then the browser reads them from the YCT domain. Data providers never see your IP address.
 - No key or secret is ever exposed.
 - All the code is open, you can read and verify it.
 
 ## Architecture, for the technical reader
 
-Snapshot design. A scheduled job regenerates a local `data.json` from the sources, several times a day. The static page reads only that file, same origin.
+Transactional snapshot design. A scheduled job checks the sources several times a day. It replaces `data.json` only after complete validation; `status.json` describes every attempt and optional Massive data is kept separately in `market.json`.
 
 ```
   systemd timer (4 times per day)
         |
         v
-  build_snapshot.py  --(HTTPS)-->  CFTC Socrata + ECB Data API + FRED
+  build_snapshot.py  --(HTTPS)-->  CFTC Legacy/TFF + ECB Data API + FRED
         |
-        v
-  /var/lib/yct/data.json   (atomic write, outside the web root)
+        +--> candidate.json --> validation --> data.json
+        +--> status.json
+        +--> market.json (optional Massive quote)
         ^
-        | Alias /data.json (read only)
+        | read-only JSON aliases
   Apache 443  -->  web/index.html + app.css + app.js
         ^
         | HTTPS, CSP default-src 'none'
-     visitor (only reads data.json, same origin)
+     visitor (only reads the YCT origin)
 ```
 
-If a source is down, the affected section keeps its previous value. Its original success timestamp is preserved and the page visibly switches to a degraded state; a new file-generation timestamp can no longer disguise cached data.
+If a required source is down, `data.json` does not change. The page keeps the last fully healthy snapshot and shows the failed attempt from `status.json`. If observations are unchanged, `data.json` remains byte-for-byte stable.
 
 ### Note on the CFTC data
 
-The query filters directly on CFTC contract market code `097741`, the standard CME Japanese-yen future. It requests 170 weekly rows and rejects a response with less than three years of unique observations. No market-name heuristic or open-interest deduplication is used.
+Both Legacy and TFF queries filter directly on CFTC contract market code `097741`, the standard CME Japanese-yen future. Each requires exactly 170 complete weekly rows and the report week expected from the official CFTC calendar. The categories stay separate.
 
 ### Risk score, the formula
 
@@ -84,7 +87,7 @@ Score from 0 (carry dominant) to 100 (unwind), recomputed in the browser:
 - Yen appreciation over four weeks, weight 0.35: a strengthening yen raises the risk.
 - Rate-gap compression, weight 0.20: the smaller the gap, the thinner the cushion.
 
-Bands: Low (under 30), Moderate (30 to 55), Elevated (55 to 78), Critical (78 and above). Notional is estimated as net contracts times 12,500,000 yen, converted at the current price. This is a monitoring heuristic, not an official measure.
+Bands: Low (under 30), Moderate (30 to 55), Elevated (55 to 78), Critical (78 and above). Notional is estimated as net contracts times 12,500,000 yen, converted with the ECB reference. Formula `1.0.0` is explicitly identified as a non-backtested heuristic.
 
 ## Repository layout
 
@@ -92,14 +95,17 @@ Bands: Low (under 30), Moderate (30 to 55), Elevated (55 to 78), Critical (78 an
 web/index.html web/app.css web/app.js   web application served by Apache
 web/data.json                            demo sample (synthetic)
 build_snapshot.py                        snapshot builder, Python stdlib only
+yct_quality.py                           shared calendars and quality contracts
+config/source-calendars.json             versioned official CFTC and BoJ calendars
+config/boj-policy.json                   single public contract for BoJ rate, date and decision
 verify_snapshot.py                       validates schema, grain and freshness
 verify_live.py                           compares HTTPS assets with the local bundle
 gen_sample.py                            regenerates the demo sample
-env.example                              configuration template (no secret)
+env.example                              local-options template (no secret)
 deploy/yct-snapshot.service              hardened systemd unit
 deploy/yct-snapshot.timer                scheduled trigger
 deploy/yct.l0g.fr.conf                   hardened Apache vhost example
-standalone/carry-yen.html                single-file no-server variant
+tools/release.py                         exact artifact, checksums and secret scanning
 RUNBOOK.md                               detailed deployment runbook (French)
 tests/test_yct.py                         regression tests for source and freshness contracts
 .github/workflows/test.yml               minimal CI contract checks
@@ -113,7 +119,7 @@ cd web && python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-The `standalone/carry-yen.html` variant also works on its own, but it queries the APIs from the browser (your IP is then visible to the providers).
+The public version keeps every provider request server-side. No variant automatically contacts those services from the browser.
 
 ## Production deployment
 

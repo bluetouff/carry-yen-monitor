@@ -8,6 +8,7 @@ secrets*
 # On garde toutefois l'echantillon de demo web/data.json.
 data.json
 !web/data.json
+dist/
 
 # Certificats et cles
 *.pem

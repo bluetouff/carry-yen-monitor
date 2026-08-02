@@ -66,6 +66,7 @@ def main():
         except Exception as exc:  # noqa: BLE001
             errors.append("%s illisible : %s" % (name, exc))
 
+    data = None
     try:
         snapshot, headers = fetch(args.base_url, "data.json")
         if "max-age=300" not in headers.get("cache-control", ""):
@@ -82,6 +83,41 @@ def main():
             )
     except Exception as exc:  # noqa: BLE001
         errors.append("data.json illisible : %s" % exc)
+
+    status_data = None
+    try:
+        status_body, headers = fetch(args.base_url, "status.json")
+        if "no-store" not in headers.get("cache-control", ""):
+            errors.append("Cache-Control de status.json doit contenir no-store")
+        with tempfile.NamedTemporaryFile(suffix=".json") as handle:
+            handle.write(status_body)
+            handle.flush()
+            status_errors, status_data = verify_snapshot.validate_status(handle.name, data or {})
+        errors.extend("status.json : %s" % error for error in status_errors)
+        if not status_errors:
+            print("[yct-live] status.json OK checked=%s published=%s" % (
+                status_data["checked_at"], status_data["published"]
+            ))
+    except Exception as exc:  # noqa: BLE001
+        errors.append("status.json illisible : %s" % exc)
+
+    massive_status = (((status_data or {}).get("sources") or {}).get("massive") or {}).get("status")
+    if massive_status == "fresh":
+        try:
+            market_body, headers = fetch(args.base_url, "market.json")
+            if "max-age=60" not in headers.get("cache-control", ""):
+                errors.append("Cache-Control de market.json inattendu")
+            with tempfile.NamedTemporaryFile(suffix=".json") as handle:
+                handle.write(market_body)
+                handle.flush()
+                market_errors, market = verify_snapshot.validate_market(handle.name)
+            errors.extend("market.json : %s" % error for error in market_errors)
+            if not market_errors:
+                print("[yct-live] market.json OK mid=%.5f at=%s" % (
+                    float(market["mid"]), market["data_as_of"]
+                ))
+        except Exception as exc:  # noqa: BLE001
+            errors.append("market.json illisible : %s" % exc)
 
     if errors:
         for error in errors:
