@@ -465,9 +465,12 @@ class ContractTests(unittest.TestCase):
 
     def test_release_artifact_is_allowlisted_and_secret_scanned(self):
         release_source = (ROOT / "tools" / "release.py").read_text(encoding="utf-8")
+        runbook = (ROOT / "RUNBOOK.md").read_text(encoding="utf-8")
         self.assertIn("SOURCE_FILES", release_source)
         self.assertIn("SECRET_PATTERNS", release_source)
         self.assertNotIn(".env\"", release_source)
+        self.assertIn("PYTHONDONTWRITEBYTECODE=1 python3 -m unittest", runbook)
+        self.assertGreaterEqual(runbook.count("verify-dir"), 2)
 
     def test_builder_has_no_deprecated_or_browser_side_source(self):
         source = (ROOT / "build_snapshot.py").read_text(encoding="utf-8")

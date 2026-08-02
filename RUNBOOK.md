@@ -105,11 +105,17 @@ tar -xzf "yct-release-<SHA>.tar.gz"
 python3 "/home/bluetouff/yct-release-<SHA>/tools/release.py" verify-dir \
   --directory "/home/bluetouff/yct-release-<SHA>" \
   --expected-sha "<SHA>"
-python3 -m unittest discover \
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
   -s "/home/bluetouff/yct-release-<SHA>/tests" -v
+python3 "/home/bluetouff/yct-release-<SHA>/tools/release.py" verify-dir \
+  --directory "/home/bluetouff/yct-release-<SHA>" \
+  --expected-sha "<SHA>"
 ```
 
 Ces commandes ne nécessitent ni `sudo` ni lecture des secrets de production.
+La désactivation du bytecode évite d'ajouter des `__pycache__` à la release;
+la seconde vérification garantit que le répertoire remis à l'activation est
+toujours exactement celui du manifeste.
 
 ## 5. Activation transactionnelle
 
