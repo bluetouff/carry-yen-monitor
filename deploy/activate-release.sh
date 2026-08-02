@@ -23,17 +23,23 @@ for command_name in git install cp mv awk mktemp systemctl; do
     exit 2
   }
 done
+[[ -x /usr/sbin/apache2ctl ]] || {
+  echo "[yct-release] commande absente: /usr/sbin/apache2ctl" >&2
+  exit 2
+}
 
 for required_path in \
   "$SOURCE_DIR/build_snapshot.py" \
   "$SOURCE_DIR/verify_snapshot.py" \
   "$SOURCE_DIR/deploy/yct-snapshot.service" \
+  "$SOURCE_DIR/deploy/yct.l0g.fr.conf" \
   "$SOURCE_DIR/web/index.html" \
   "$SOURCE_DIR/web/app.css" \
   "$SOURCE_DIR/web/app.js" \
   /opt/yct/build_snapshot.py \
   /etc/yct/env \
   /etc/systemd/system/yct-snapshot.service \
+  /etc/apache2/sites-available/yct.l0g.fr.conf \
   /var/lib/yct/data.json \
   /var/www/html/yct/index.html \
   /var/www/html/yct/app.css \
@@ -62,6 +68,7 @@ install -d -o root -g root -m 0700 "$BACKUP_DIR"
 cp -a /opt/yct/build_snapshot.py "$BACKUP_DIR/build_snapshot.py"
 cp -a /etc/yct/env "$BACKUP_DIR/env"
 cp -a /etc/systemd/system/yct-snapshot.service "$BACKUP_DIR/yct-snapshot.service"
+cp -a /etc/apache2/sites-available/yct.l0g.fr.conf "$BACKUP_DIR/yct.l0g.fr.conf"
 cp -a /var/lib/yct/data.json "$BACKUP_DIR/data.json"
 cp -a /var/www/html/yct/index.html "$BACKUP_DIR/index.html"
 cp -a /var/www/html/yct/app.css "$BACKUP_DIR/app.css"
@@ -88,6 +95,7 @@ rollback() {
   install -o root -g root -m 0755 "$BACKUP_DIR/build_snapshot.py" /opt/yct/build_snapshot.py
   install -o root -g root -m 0600 "$BACKUP_DIR/env" /etc/yct/env
   install -o root -g root -m 0644 "$BACKUP_DIR/yct-snapshot.service" /etc/systemd/system/yct-snapshot.service
+  install -o root -g root -m 0644 "$BACKUP_DIR/yct.l0g.fr.conf" /etc/apache2/sites-available/yct.l0g.fr.conf
   install -o yct -g yct -m 0644 "$BACKUP_DIR/data.json" /var/lib/yct/data.json
   install -o root -g root -m 0644 "$BACKUP_DIR/index.html" /var/www/html/yct/index.html
   install -o root -g root -m 0644 "$BACKUP_DIR/app.css" /var/www/html/yct/app.css
@@ -108,6 +116,7 @@ rollback() {
   systemctl daemon-reload
   systemctl start yct-snapshot.service
   systemctl start yct-snapshot.timer
+  /usr/sbin/apache2ctl configtest && systemctl reload apache2
   echo "[yct-release] rollback termine; sauvegarde conservee: $BACKUP_DIR" >&2
   exit "$exit_code"
 }
@@ -167,6 +176,10 @@ install -o root -g root -m 0644 "$SOURCE_DIR/web/index.html" /var/www/html/yct/i
 mv /var/www/html/yct/app.css.next /var/www/html/yct/app.css
 mv /var/www/html/yct/app.js.next /var/www/html/yct/app.js
 mv /var/www/html/yct/index.html.next /var/www/html/yct/index.html
+
+install -o root -g root -m 0644 "$SOURCE_DIR/deploy/yct.l0g.fr.conf" /etc/apache2/sites-available/yct.l0g.fr.conf
+/usr/sbin/apache2ctl configtest
+systemctl reload apache2
 
 systemctl start yct-snapshot.timer
 systemctl is-active --quiet yct-snapshot.timer
