@@ -123,7 +123,7 @@ The public version keeps every provider request server-side. No variant automati
 
 ## Production deployment
 
-Full step-by-step procedure in [RUNBOOK.md](RUNBOOK.md) (French). In short: a dedicated system user, the builder under a hardened systemd timer, a static Apache vhost with strict CSP and a Let's Encrypt certificate. Requirements: Debian, Apache 2 (ssl, headers, rewrite), Python 3, a DNS record.
+Full step-by-step procedure in [RUNBOOK.md](RUNBOOK.md) (French). In short: a dedicated system user, the builder under a hardened systemd timer, a static Apache vhost with strict CSP and a Let's Encrypt certificate. Requirements: Debian, Apache 2 (ssl, headers, rewrite), Python 3.12 or newer (CI covers 3.12, 3.13 and 3.14), and a DNS record.
 
 ## Disclaimer
 

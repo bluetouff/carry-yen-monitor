@@ -12,23 +12,32 @@ jobs:
   contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       - name: Python syntax and unit tests
         run: |
           python -m py_compile build_snapshot.py yct_quality.py verify_snapshot.py verify_live.py gen_sample.py tools/release.py tests/test_yct.py
           python -m unittest discover -s tests -v
       - name: Browser JavaScript syntax
+        if: matrix.python-version == '3.14'
         run: |
           node --check web/app.js
           bash -n deploy/activate-release.sh
       - name: Exact release artifact and secret guard
+        if: matrix.python-version == '3.14'
         run: |
           sha=$(git rev-parse HEAD)
           python tools/release.py build --output /tmp/yct-dist
           python tools/release.py verify-archive --archive "/tmp/yct-dist/yct-release-${sha}.tar.gz" --expected-sha "$sha"
       - name: Demo snapshot generation
+        if: matrix.python-version == '3.14'
         run: python gen_sample.py
