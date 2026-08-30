@@ -23,7 +23,8 @@ Apache 443 --> application statique + data.json + status.json + market.json opti
 
 ## 1. Contrats à préserver
 
-- URLs: `https://yct.l0g.fr/`, `/data.json`, `/status.json` et `/market.json` si Massive est configuré.
+- URLs: `https://yct.l0g.fr/`, `/en/`, `/data.json`, `/status.json` et `/market.json` si Massive est configuré.
+- `/` reste la route française et `/en/` la route anglaise complète. Elles partagent strictement `app.css`, `app.js` et les mêmes JSON canoniques.
 - Le navigateur ne contacte que `yct.l0g.fr`: aucun script, pixel, police, image ou appel automatique tiers.
 - `data.json` est toujours le dernier snapshot intégralement sain. Une panne ne le modifie jamais.
 - `status.json` expose le dernier contrôle, avec codes d'erreur normalisés, sans URL signée ni message brut pouvant contenir un secret.
@@ -130,11 +131,11 @@ SOURCE_DIR=/home/bluetouff/yct-release-<SHA> \
 Le script:
 
 1. vérifie le SHA et toutes les sommes de l'artefact, ou le checkout Git propre;
-2. sauvegarde backend, calendrier, politique BoJ, unités, configuration, snapshots, vhost et assets;
+2. sauvegarde backend, calendrier, politique BoJ, unités, configuration, snapshots, vhost et assets français/anglais;
 3. conserve les secrets de `/etc/yct/env` en `0600 root:root`, retire les trois anciennes variables BoJ désormais versionnées et n'affiche jamais le fichier;
 4. installe le backend et les deux contrats de source avant le front;
 5. génère, valide et promeut le snapshot;
-6. installe les assets avec HTML en dernier;
+6. installe les assets partagés, puis les HTML anglais et français en dernier;
 7. teste Apache avant reload;
 8. réactive le timer;
 9. restaure automatiquement la sauvegarde au premier échec.
@@ -150,7 +151,7 @@ Depuis le checkout exact:
 python3 verify_live.py --base-url https://yct.l0g.fr/ --bundle-dir .
 ```
 
-Le vérificateur compare les trois assets au bundle, contrôle CSP, HSTS et cache,
+Le vérificateur compare les quatre assets, dont `/en/index.html`, au bundle, contrôle CSP, HSTS et cache,
 valide `data.json` contre les calendriers, puis recoupe `status.json`. Si Massive
 est déclaré frais, il valide aussi `market.json`.
 
@@ -166,6 +167,7 @@ journalctl -u yct-snapshot.service -n 50 --no-pager
 Contrôles navigateur:
 
 - référence BCE, différentiel Fed-BoJ, Legacy et TFF correspondent au JSON public;
+- les sélecteurs FR/EN sont réciproques, `/en/` reste en anglais après chargement et les deux routes affichent le même snapshot;
 - le sélecteur Legacy/TFF change uniquement le graphique de positionnement;
 - l'appréciation du yen porte le signe économique correct;
 - cinq badges de source sont visibles;
@@ -188,12 +190,14 @@ Pour une nouvelle machine uniquement:
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin yct
 sudo install -d -o yct -g yct -m 0755 /var/lib/yct
 sudo install -d -o root -g root -m 0755 /opt/yct /etc/yct /var/www/html/yct
+sudo install -d -o root -g root -m 0755 /var/www/html/yct/en
 sudo install -o root -g root -m 0755 build_snapshot.py yct_quality.py verify_snapshot.py /opt/yct/
 sudo install -o root -g root -m 0644 config/boj-policy.json /opt/yct/boj-policy.json
 sudo install -o root -g root -m 0644 config/source-calendars.json /opt/yct/source-calendars.json
 sudo install -o root -g root -m 0600 env.example /etc/yct/env
 sudo install -o root -g root -m 0644 deploy/yct-snapshot.service deploy/yct-snapshot.timer /etc/systemd/system/
 sudo install -o root -g root -m 0644 web/index.html web/app.css web/app.js /var/www/html/yct/
+sudo install -o root -g root -m 0644 web/en/index.html /var/www/html/yct/en/index.html
 sudo systemctl daemon-reload
 sudo systemctl enable --now yct-snapshot.timer
 sudo systemctl start yct-snapshot.service

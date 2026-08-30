@@ -6,7 +6,12 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Carry Yen, moniteur du carry trade JPY et du positionnement spéculatif</title>
-<link rel="stylesheet" href="app.css?v=7c84df4ceef5">
+<meta name="description" content="Moniteur du carry trade yen fondé sur les positions CFTC, la référence USD/JPY de la BCE et le différentiel Fed-BoJ.">
+<link rel="canonical" href="https://yct.l0g.fr/">
+<link rel="alternate" hreflang="fr" href="https://yct.l0g.fr/">
+<link rel="alternate" hreflang="en" href="https://yct.l0g.fr/en/">
+<link rel="alternate" hreflang="x-default" href="https://yct.l0g.fr/">
+<link rel="stylesheet" href="app.css?v=ff2c70cbd0ec">
 </head>
 <body>
 <div class="wrap">
@@ -15,6 +20,7 @@
     <h1 class="brand"><b>鈴</b> Carry <b>Yen</b> <span class="v">/ moniteur</span></h1>
     <div class="tag">positionnement spéculatif JPY &middot; différentiel de taux &middot; risque de débouclage</div>
     <div class="pill"><span class="dot" id="statusDot"></span><span id="statusTxt">chargement...</span></div>
+    <nav class="languages" aria-label="Langue"><a href="/" lang="fr" aria-current="page">FR</a><a href="/en/" lang="en">EN</a></nav>
   </header>
 
   <!-- KPI principaux -->
@@ -79,10 +85,10 @@
     <section class="card calc">
       <h2>Calculateur de carry</h2>
       <div class="calcgrid">
-        <div><label>Cible BoJ (%)</label><input id="iBoj" type="number" step="0.05" value="1.00"></div>
-        <div><label>Milieu de cible Fed (%)</label><input id="iFed" type="number" step="0.05" value="3.625"></div>
-        <div><label>Levier</label><input id="iLev" type="number" step="0.5" value="1"></div>
-        <div><label>Mouvement USD/JPY anticipé (%)</label><input id="iMove" type="number" step="0.5" value="0"></div>
+        <div><label for="iBoj">Cible BoJ (%)</label><input id="iBoj" type="number" step="0.05" value="1.00"></div>
+        <div><label for="iFed">Milieu de cible Fed (%)</label><input id="iFed" type="number" step="0.05" value="3.625"></div>
+        <div><label for="iLev">Levier</label><input id="iLev" type="number" step="0.5" value="1"></div>
+        <div><label for="iMove">Mouvement USD/JPY anticipé (%)</label><input id="iMove" type="number" step="0.5" value="0"></div>
       </div>
       <div class="out">
         <div><div class="ol">Carry annuel brut</div><div class="ov" id="oCarry">...</div></div>
@@ -122,6 +128,6 @@
   </footer>
 
 </div>
-<script src="app.js?v=f807a418bfdd"></script>
+<script src="app.js?v=fd0c85ee4323"></script>
 </body>
 </html>

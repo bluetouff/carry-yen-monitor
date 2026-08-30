@@ -67,7 +67,7 @@ Conception transactionnelle. Un job contrôle les sources plusieurs fois par jou
         +--> market.json (Massive optionnel)
         ^
         | Alias JSON en lecture seule
-  Apache 443  -->  web/index.html + app.css + app.js
+  Apache 443  -->  web/index.html + web/en/index.html + app.css + app.js
         ^
         | HTTPS, CSP default-src 'none'
      visiteur (ne lit que le domaine YCT)
@@ -92,7 +92,8 @@ Bandes: Faible (moins de 30), Modéré (30 à 55), Élevé (55 à 78), Critique 
 ## Contenu du dépôt
 
 ```
-web/index.html web/app.css web/app.js   application web servie par Apache
+web/index.html web/en/index.html        routes française et anglaise de l'application
+web/app.css web/app.js                  présentation et logique bilingue partagées
 web/data.json                            echantillon de demonstration (synthetique)
 build_snapshot.py                        builder du snapshot, Python stdlib uniquement
 yct_quality.py                           calendriers et contrats de qualité partagés
@@ -119,7 +120,7 @@ cd web && python3 -m http.server 8000
 # puis ouvrir http://localhost:8000
 ```
 
-La version publique garde toutes les requêtes vers les fournisseurs côté serveur. Il n'existe pas de variante qui contacte automatiquement ces services depuis le navigateur.
+La version publique garde toutes les requêtes vers les fournisseurs côté serveur. Les routes française `/` et anglaise `/en/` lisent le même JSON canonique de même origine; aucune variante ne contacte automatiquement ces services depuis le navigateur.
 
 ## Déploiement en production
 

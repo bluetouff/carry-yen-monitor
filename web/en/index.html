@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Carry Yen, JPY carry-trade and speculative-positioning monitor</title>
+<meta name="description" content="Yen carry-trade monitor based on CFTC positioning, the ECB USD/JPY reference and the Fed-BoJ rate differential.">
+<link rel="canonical" href="https://yct.l0g.fr/en/">
+<link rel="alternate" hreflang="fr" href="https://yct.l0g.fr/">
+<link rel="alternate" hreflang="en" href="https://yct.l0g.fr/en/">
+<link rel="alternate" hreflang="x-default" href="https://yct.l0g.fr/">
+<link rel="stylesheet" href="../app.css?v=ff2c70cbd0ec">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="tape">
+    <h1 class="brand"><b>鈴</b> Carry <b>Yen</b> <span class="v">/ monitor</span></h1>
+    <div class="tag">JPY speculative positioning &middot; rate differential &middot; unwind risk</div>
+    <div class="pill"><span class="dot" id="statusDot"></span><span id="statusTxt">loading...</span></div>
+    <nav class="languages" aria-label="Language"><a href="/" lang="fr">FR</a><a href="/en/" lang="en" aria-current="page">EN</a></nav>
+  </header>
+
+  <div class="kpis" id="kpis">
+    <div class="kpi"><div class="lbl">USD / JPY</div><div class="val" id="kSpot">...</div><div class="sub" id="kSpotSub">daily ECB reference</div><div class="sub market" id="kMarketSub" hidden></div></div>
+    <div class="kpi"><div class="lbl">Fed - BoJ differential</div><div class="val" id="kDiff">...</div><div class="sub" id="kDiffSub">annualised gross carry</div></div>
+    <div class="kpi"><div class="lbl">Non-commercial JPY net</div><div class="val" id="kNet">...</div><div class="sub" id="kNetSub">CFTC Legacy &middot; CME contract 097741</div></div>
+    <div class="kpi"><div class="lbl">Unwind risk</div><div class="val" id="kRisk">...</div><div class="sub" id="kRiskSub">heuristic composite</div></div>
+  </div>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Who is shorting the yen: CFTC positioning</h2>
+      <div class="cap">Net position of the broad "non-commercial" category in the Legacy report for the standard CME yen future. It is not the TFF "leveraged funds" category. Net short means a bet against the yen; a reduction in shorts may signal an unwind.</div>
+      <div class="gauge">
+        <span class="gnum" id="netBig">...</span><span class="gtag" id="netTag">...</span>
+        <div class="meterrow">
+          <div class="ml"><span>short intensity vs three-year extreme</span><span id="crowdPct">...</span></div>
+          <div class="track"><div class="fill" id="crowdFill" style="width:0%;background:var(--yen)"></div></div>
+        </div>
+        <div class="meterrow">
+          <div class="ml"><span>net CME-futures notional, not global carry-trade size</span><span id="notional">...</span></div>
+        </div>
+        <div class="meterrow">
+          <div class="ml"><span>TFF "leveraged funds", separate series</span><span id="tffNet">...</span></div>
+        </div>
+      </div>
+      <div style="margin-top:18px">
+        <div class="series-toggle" aria-label="Displayed positioning series">
+          <button type="button" id="toggleLegacy" class="active" aria-pressed="true">Legacy non-commercial</button>
+          <button type="button" id="toggleTff" aria-pressed="false">TFF leveraged funds</button>
+        </div>
+        <div id="cotChart"></div>
+        <div class="chartcap"><span id="cotStart"></span><span id="cotChartLabel">non-commercial net, contracts (JPY 12.5m each)</span><span id="cotEnd"></span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Tension between carry and unwind</h2>
+      <div class="cap">The left side favours carry: a wide differential, a weak yen and profitable shorts. The right side favours an unwind: crowded shorts, BoJ tightening and an appreciating yen.</div>
+      <div class="tension"><div class="tcenter"></div><div class="needle" id="needle" style="left:50%"></div></div>
+      <div class="tlabels"><span class="l">ACTIVE CARRY</span><span>balance</span><span class="r">UNWIND</span></div>
+      <div class="verdict" id="verdict">assessment in progress...</div>
+      <div class="meterrow" style="margin-top:16px">
+        <div class="ml"><span>short-position crowding</span><span id="c1">...</span></div>
+        <div class="track"><div class="fill" id="f1" style="background:var(--yen)"></div></div>
+      </div>
+      <div class="meterrow">
+        <div class="ml"><span>recent yen appreciation (4 weeks)</span><span id="c2">...</span></div>
+        <div class="track"><div class="fill" id="f2" style="background:var(--yen)"></div></div>
+      </div>
+      <div class="meterrow">
+        <div class="ml"><span>rate-differential compression</span><span id="c3">...</span></div>
+        <div class="track"><div class="fill" id="f3" style="background:var(--yen)"></div></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="grid2 rev">
+    <section class="card calc">
+      <h2>Carry calculator</h2>
+      <div class="calcgrid">
+        <div><label for="iBoj">BoJ target (%)</label><input id="iBoj" type="number" step="0.05" value="1.00"></div>
+        <div><label for="iFed">Fed target midpoint (%)</label><input id="iFed" type="number" step="0.05" value="3.625"></div>
+        <div><label for="iLev">Leverage</label><input id="iLev" type="number" step="0.5" value="1"></div>
+        <div><label for="iMove">Expected USD/JPY move (%)</label><input id="iMove" type="number" step="0.5" value="0"></div>
+      </div>
+      <div class="out">
+        <div><div class="ol">Gross annual carry</div><div class="ov" id="oCarry">...</div></div>
+        <div><div class="ol">Total return (including FX)</div><div class="ov" id="oTotal">...</div></div>
+        <div><div class="ol">Break-even yen appreciation</div><div class="ov" id="oBreak">...</div></div>
+        <div><div class="ol">Break-even USD/JPY level</div><div class="ov" id="oLevel">...</div></div>
+      </div>
+      <div class="note" style="margin-top:12px">Carry accrues each day as long as the yen does not appreciate faster than the rate differential. Beyond the threshold, the currency move erases the carry. Analysis tool, not investment advice.</div>
+    </section>
+
+    <section class="card">
+      <h2>USD/JPY, 12 months</h2>
+      <div class="cap">Daily ECB reference derived from EUR/JPY divided by EUR/USD, not a real-time spot quote. A decline means a stronger yen.</div>
+      <div id="fxChart" style="margin-top:8px"></div>
+      <div class="chartcap"><span id="fxStart"></span><span id="fxRange">...</span><span id="fxEnd"></span></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Sources and methodology</h2>
+    <div class="sourcehealth" id="sourceHealth" aria-label="Source freshness"></div>
+    <div class="sources">
+      <p><b style="color:var(--text)">CFTC Legacy</b> <a href="https://publicreporting.cftc.gov/resource/6dca-aqww.json" rel="noopener noreferrer">Legacy Futures Only</a>. The query directly targets <code>cftc_contract_market_code = '097741'</code>. Non-commercial net equals longs minus shorts.</p>
+      <p><b style="color:var(--text)">CFTC TFF</b> <a href="https://publicreporting.cftc.gov/resource/gpe5-46if.json" rel="noopener noreferrer">TFF Futures Only</a>. The "leveraged funds" series is displayed separately and is never combined with the Legacy category.</p>
+      <p><b style="color:var(--text)">ECB</b> <a href="https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html" rel="noopener noreferrer">official reference rates</a>. USD/JPY equals JPY per EUR divided by USD per EUR. This daily information reference is not a real-time market quote.</p>
+      <p><b style="color:var(--text)">Fed</b> target from the official FRED series <a href="https://fred.stlouisfed.org/series/DFEDTARL" rel="noopener noreferrer">DFEDTARL</a> and <a href="https://fred.stlouisfed.org/series/DFEDTARU" rel="noopener noreferrer">DFEDTARU</a>. The dashboard displays the midpoint of the range.</p>
+      <p><b style="color:var(--text)">BoJ</b> target configured with a date and verification URL based on <a href="https://www.boj.or.jp/en/mopo/mpmdeci/index.htm" rel="noopener noreferrer">official decisions</a>. An outdated configuration explicitly degrades the status.</p>
+      <p><b style="color:var(--text)">Notional</b> net contracts multiplied by JPY 12,500,000 and converted with the ECB reference. This is the net notional of this CME future, not an estimate of the global carry trade. The score is a monitoring heuristic.</p>
+      <p><b style="color:var(--text)">Optional market spot</b> a Massive quote may complement the ECB reference. It remains separate, timestamped and fetched server-side; its absence does not degrade the canonical snapshot.</p>
+      <p><b style="color:var(--text)">Formula</b> version <code>1.0.0</code>. Weights remain unchanged and explicitly heuristic until a documented backtest validates a new calibration.</p>
+      <p style="color:var(--faint)">For further work on the true size of the global carry trade and Treasury exposure: BIS Quarterly Review, US Treasury TIC data and the BoJ balance sheet.</p>
+    </div>
+  </section>
+
+  <footer>
+    Snapshot architecture. The browser reads only same-origin JSON regenerated server-side, with no third party contacted and no key exposed. <span id="ts"></span>
+  </footer>
+
+</div>
+<script src="../app.js?v=fd0c85ee4323"></script>
+</body>
+</html>

@@ -463,13 +463,40 @@ class ContractTests(unittest.TestCase):
         self.assertIn("signed(-state.move4w,1)", javascript)
         self.assertIn("risk_formula_version", javascript)
 
+    def test_english_frontend_is_complete_and_shares_the_runtime_contract(self):
+        french = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        english = (ROOT / "web" / "en" / "index.html").read_text(encoding="utf-8")
+        javascript = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertIn('<html lang="fr">', french)
+        self.assertIn('<html lang="en">', english)
+        self.assertIn('href="https://yct.l0g.fr/en/"', french)
+        self.assertIn('href="https://yct.l0g.fr/"', english)
+        self.assertIn('hreflang="fr"', english)
+        self.assertIn('hreflang="en"', french)
+        self.assertIn("Sources and methodology", english)
+        self.assertIn("Carry calculator", english)
+        self.assertIn("Analysis tool, not investment advice.", english)
+        self.assertEqual(
+            set(re.findall(r'\bid="([A-Za-z][A-Za-z0-9]*)"', french)),
+            set(re.findall(r'\bid="([A-Za-z][A-Za-z0-9]*)"', english)),
+        )
+        self.assertIn('document.documentElement.lang === "en"', javascript)
+        self.assertIn('fetch("/data.json"', javascript)
+        self.assertIn('fetch("/status.json"', javascript)
+        self.assertIn('fetch("/market.json"', javascript)
+
     def test_frontend_assets_are_cache_busted_by_their_content_hash(self):
-        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
-        for name in ("app.css", "app.js"):
-            digest = hashlib.sha256((ROOT / "web" / name).read_bytes()).hexdigest()[:12]
-            match = re.search(r'%s\?v=([0-9a-f]{12})' % re.escape(name), html)
-            self.assertIsNotNone(match, "%s sans version de contenu" % name)
-            self.assertEqual(match.group(1), digest)
+        pages = (
+            ROOT / "web" / "index.html",
+            ROOT / "web" / "en" / "index.html",
+        )
+        for page in pages:
+            html = page.read_text(encoding="utf-8")
+            for name in ("app.css", "app.js"):
+                digest = hashlib.sha256((ROOT / "web" / name).read_bytes()).hexdigest()[:12]
+                match = re.search(r'%s\?v=([0-9a-f]{12})' % re.escape(name), html)
+                self.assertIsNotNone(match, "%s sans version de contenu dans %s" % (name, page))
+                self.assertEqual(match.group(1), digest)
 
     def test_deployment_maps_all_runtime_surfaces(self):
         apache = (ROOT / "deploy" / "yct.l0g.fr.conf").read_text(encoding="utf-8")
@@ -484,12 +511,17 @@ class ContractTests(unittest.TestCase):
         self.assertIn("boj-policy.json", activation)
         self.assertIn("yct-snapshot.timer", activation)
         self.assertIn("apache2ctl configtest", activation)
+        self.assertIn("web/en/index.html", activation)
+        self.assertIn("/var/www/html/yct/en", activation)
+        self.assertIn("backup_optional /var/www/html/yct/en/index.html", activation)
+        self.assertIn("restore_optional en-index.html", activation)
 
     def test_release_artifact_is_allowlisted_and_secret_scanned(self):
         release_source = (ROOT / "tools" / "release.py").read_text(encoding="utf-8")
         runbook = (ROOT / "RUNBOOK.md").read_text(encoding="utf-8")
         self.assertIn("SOURCE_FILES", release_source)
         self.assertIn("SECRET_PATTERNS", release_source)
+        self.assertIn('"web/en/index.html"', release_source)
         self.assertNotIn(".env\"", release_source)
         self.assertIn("PYTHONDONTWRITEBYTECODE=1 python3 -m unittest", runbook)
         self.assertGreaterEqual(runbook.count("verify-dir"), 2)

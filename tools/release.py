@@ -33,6 +33,7 @@ SOURCE_FILES = (
     "verify_snapshot.py",
     "web/app.css",
     "web/app.js",
+    "web/en/index.html",
     "web/index.html",
     "yct_quality.py",
 )

@@ -63,6 +63,7 @@ réécrire `data.json` avec un statut dégradé.
 - La formule `1.0.0`, ses poids et son statut non backtesté sont dans le snapshot.
 - Massive peut fournir un spot serveur dans `market.json`; il ne remplace jamais la référence BCE et son absence ne dégrade pas `data.json`.
 - Le tableau historique statique non relié au snapshot est supprimé; l'interface ne conserve que des chiffres issus du contrat de données ou des explications méthodologiques sourcées.
+- Les routes française `/` et anglaise `/en/` conservent des HTML sémantiques distincts mais partagent la même logique de calcul et les mêmes JSON canoniques; les libellés dynamiques sont sélectionnés depuis l'attribut `lang`.
 
 ### Maintenabilité et release
 
@@ -73,8 +74,8 @@ réécrire `data.json` avec un statut dégradé.
 - `tools/release.py` construit une archive à liste blanche, cherche des secrets et vérifie `SOURCE_SHA` plus `SHA256SUMS`.
 - Les tests exécutés dans une release extraite désactivent le bytecode puis le manifeste est revérifié, afin qu'aucun `__pycache__` ne puisse atteindre l'activation.
 - La migration unique du schéma 2 compare seulement les champs historiques réellement disponibles (`net/oi`); dès le schéma 3, les révisions `long/short/net/oi` sont toutes contrôlées.
-- L'activation sauvegarde et restaure ensemble builder, validateur, calendrier, timer, service, vhost, snapshots et assets.
-- `verify_live.py` contrôle désormais `status.json` et, si actif, `market.json` en plus des assets, en-têtes et données.
+- L'activation sauvegarde et restaure ensemble builder, validateur, calendrier, timer, service, vhost, snapshots et assets français/anglais.
+- `verify_live.py` contrôle les routes `/` et `/en/`, `status.json` et, si actif, `market.json` en plus des assets partagés, en-têtes et données.
 
 ## Validation reproductible
 

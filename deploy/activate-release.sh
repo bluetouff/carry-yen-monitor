@@ -18,7 +18,7 @@ if [[ $(id -u) -ne 0 ]]; then
   exit 2
 fi
 
-for command_name in install cp mv awk cmp mktemp systemctl python3; do
+for command_name in install cp mv awk cmp mktemp rmdir systemctl python3; do
   command -v "$command_name" >/dev/null || {
     echo "[yct-release] commande absente: $command_name" >&2
     exit 2
@@ -40,6 +40,7 @@ for required_path in \
   "$SOURCE_DIR/deploy/yct-snapshot.timer" \
   "$SOURCE_DIR/deploy/yct.l0g.fr.conf" \
   "$SOURCE_DIR/web/index.html" \
+  "$SOURCE_DIR/web/en/index.html" \
   "$SOURCE_DIR/web/app.css" \
   "$SOURCE_DIR/web/app.js" \
   /opt/yct/build_snapshot.py \
@@ -119,6 +120,7 @@ backup_optional /opt/yct/source-calendars.json source-calendars.json
 backup_optional /opt/yct/SOURCE_SHA SOURCE_SHA
 backup_optional /var/lib/yct/status.json status.json
 backup_optional /var/lib/yct/market.json market.json
+backup_optional /var/www/html/yct/en/index.html en-index.html
 
 ENV_TMP=""
 SHA_TMP=""
@@ -145,8 +147,14 @@ rollback() {
   restore_optional SOURCE_SHA /opt/yct/SOURCE_SHA root root 0644
   restore_optional status.json /var/lib/yct/status.json yct yct 0644
   restore_optional market.json /var/lib/yct/market.json yct yct 0644
+  install -d -o root -g root -m 0755 /var/www/html/yct/en
+  restore_optional en-index.html /var/www/html/yct/en/index.html root root 0644
+  if [[ ! -f "$BACKUP_DIR/.had-en-index.html" ]]; then
+    rmdir /var/www/html/yct/en 2>/dev/null || true
+  fi
   rm -f /var/lib/yct/candidate.json
-  rm -f /var/www/html/yct/index.html.next /var/www/html/yct/app.css.next /var/www/html/yct/app.js.next
+  rm -f /var/www/html/yct/index.html.next /var/www/html/yct/app.css.next /var/www/html/yct/app.js.next \
+    /var/www/html/yct/en/index.html.next
   [[ -z "$ENV_TMP" ]] || rm -f "$ENV_TMP"
   [[ -z "$SHA_TMP" ]] || rm -f "$SHA_TMP"
   systemctl daemon-reload
@@ -194,9 +202,12 @@ systemctl start yct-snapshot.service
 
 install -o root -g root -m 0644 "$SOURCE_DIR/web/app.css" /var/www/html/yct/app.css.next
 install -o root -g root -m 0644 "$SOURCE_DIR/web/app.js" /var/www/html/yct/app.js.next
+install -d -o root -g root -m 0755 /var/www/html/yct/en
+install -o root -g root -m 0644 "$SOURCE_DIR/web/en/index.html" /var/www/html/yct/en/index.html.next
 install -o root -g root -m 0644 "$SOURCE_DIR/web/index.html" /var/www/html/yct/index.html.next
 mv /var/www/html/yct/app.css.next /var/www/html/yct/app.css
 mv /var/www/html/yct/app.js.next /var/www/html/yct/app.js
+mv /var/www/html/yct/en/index.html.next /var/www/html/yct/en/index.html
 mv /var/www/html/yct/index.html.next /var/www/html/yct/index.html
 
 install -o root -g root -m 0644 "$SOURCE_DIR/deploy/yct.l0g.fr.conf" /etc/apache2/sites-available/yct.l0g.fr.conf

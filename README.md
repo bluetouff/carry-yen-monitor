@@ -4,7 +4,7 @@ Language: **English** · [Français](README.fr.md)
 
 A web dashboard that watches the yen carry trade and answers, at a glance, one simple question: are CFTC non-commercial traders still betting against the yen, and is the risk of a violent reversal rising?
 
-Live demo: https://yct.l0g.fr
+Live demo: https://yct.l0g.fr/en/
 
 ![Dashboard preview](docs/preview.png)
 
@@ -67,7 +67,7 @@ Transactional snapshot design. A scheduled job checks the sources several times 
         +--> market.json (optional Massive quote)
         ^
         | read-only JSON aliases
-  Apache 443  -->  web/index.html + app.css + app.js
+  Apache 443  -->  web/index.html + web/en/index.html + app.css + app.js
         ^
         | HTTPS, CSP default-src 'none'
      visitor (only reads the YCT origin)
@@ -92,7 +92,8 @@ Bands: Low (under 30), Moderate (30 to 55), Elevated (55 to 78), Critical (78 an
 ## Repository layout
 
 ```
-web/index.html web/app.css web/app.js   web application served by Apache
+web/index.html web/en/index.html        French and English application routes
+web/app.css web/app.js                  shared presentation and bilingual logic
 web/data.json                            demo sample (synthetic)
 build_snapshot.py                        snapshot builder, Python stdlib only
 yct_quality.py                           shared calendars and quality contracts
@@ -119,7 +120,7 @@ cd web && python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-The public version keeps every provider request server-side. No variant automatically contacts those services from the browser.
+The public version keeps every provider request server-side. The French `/` and English `/en/` routes read the same canonical same-origin JSON; neither variant automatically contacts those services from the browser.
 
 ## Production deployment
 

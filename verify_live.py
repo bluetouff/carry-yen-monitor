@@ -44,27 +44,33 @@ def main():
         web_dir = args.bundle_dir
 
     errors = []
-    for name in ("index.html", "app.css", "app.js"):
-        local_path = os.path.join(web_dir, name)
+    assets = (
+        ("", "index.html", "/"),
+        ("en/", "en/index.html", "/en/"),
+        ("app.css", "app.css", "/app.css"),
+        ("app.js", "app.js", "/app.js"),
+    )
+    for remote_path, local_name, label in assets:
+        local_path = os.path.join(web_dir, *local_name.split("/"))
         try:
             with open(local_path, "rb") as handle:
                 local = handle.read()
-            remote, headers = fetch(args.base_url, name)
+            remote, headers = fetch(args.base_url, remote_path)
             local_hash, remote_hash = sha256(local), sha256(remote)
             if local_hash != remote_hash:
-                errors.append("%s differe (local %s, prod %s)" % (name, local_hash, remote_hash))
+                errors.append("%s differe (local %s, prod %s)" % (label, local_hash, remote_hash))
             else:
-                print("[yct-live] %s %s" % (name, remote_hash))
-            if name == "index.html":
+                print("[yct-live] %s %s" % (label, remote_hash))
+            if local_name.endswith("index.html"):
                 csp = headers.get("content-security-policy", "")
                 if "default-src 'none'" not in csp or "connect-src 'self'" not in csp:
-                    errors.append("CSP de production incomplete")
+                    errors.append("CSP de production incomplete pour %s" % label)
                 if "max-age=63072000" not in headers.get("strict-transport-security", ""):
-                    errors.append("HSTS de production incomplet")
+                    errors.append("HSTS de production incomplet pour %s" % label)
                 if "no-cache" not in headers.get("cache-control", ""):
-                    errors.append("index.html doit etre revalide (Cache-Control no-cache absent)")
+                    errors.append("%s doit etre revalide (Cache-Control no-cache absent)" % label)
         except Exception as exc:  # noqa: BLE001
-            errors.append("%s illisible : %s" % (name, exc))
+            errors.append("%s illisible : %s" % (label, exc))
 
     data = None
     try:
