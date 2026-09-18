@@ -13,6 +13,7 @@ from yct_quality import (
     PRIMARY_SOURCE_URLS,
     QualityError,
     boj_config_state,
+    boj_rate_at,
     content_sha256,
     load_boj_policy,
     load_calendar,
@@ -171,7 +172,12 @@ def validate(
         boj = float(rates["boj"])
         require(math.isfinite(boj) and -1 <= boj <= 15, "taux BoJ hors plage", errors)
         if boj_policy:
-            require(boj == float(boj_policy["rate"]), "taux BoJ different du contrat versionne", errors)
+            require(boj == boj_rate_at(boj_policy, now), "taux BoJ different du contrat versionne a cette date", errors)
+            if boj_policy.get("effective_from"):
+                require(rates.get("boj_announced") == boj_policy["rate"],
+                        "taux BoJ annonce incoherent", errors)
+                require(rates.get("boj_effective_from") == boj_policy["effective_from"],
+                        "date d'effet BoJ incoherente", errors)
     except Exception:  # noqa: BLE001
         errors.append("taux BoJ absent ou invalide")
 

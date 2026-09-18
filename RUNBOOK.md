@@ -32,7 +32,9 @@ Apache 443 --> application statique + data.json + status.json + market.json opti
 - USD/JPY canonique est la référence quotidienne BCE. `market.json` est un spot Massive optionnel, séparé et horodaté.
 - La formule de risque `1.0.0` reste explicitement heuristique. Toute nouvelle pondération exige un backtest documenté.
 - Les calendriers CFTC et BoJ versionnés dans `config/source-calendars.json` doivent être renouvelés avant `valid_through`.
+- La grâce CFTC tolère l'ancien rapport pendant 90 minutes après l'heure officielle de publication, tout en acceptant immédiatement le nouveau. Elle n'autorise aucun rapport avant sa publication prévue.
 - Le taux, la date, l'URL et l'empreinte SHA-256 du PDF BoJ n'existent que dans `config/boj-policy.json`. Le builder, le validateur et l'activation lisent ce même contrat.
+- Une décision annoncée peut prendre effet plusieurs jours plus tard. Le contrat BoJ v2 conserve `previous_rate` et `effective_from`, en plus du taux annoncé `rate` et de la date de décision `data_as_of`. Le builder utilise le taux en vigueur à la date japonaise du contrôle. La bascule produit un nouveau snapshot même si les séries de marché sont inchangées; le validateur refuse l'ancien taux après la date d'effet.
 
 ## 2. Préflight local
 
@@ -210,6 +212,7 @@ recharger Apache.
 
 - CFTC: renouveler la liste annuelle depuis l'URL officielle inscrite dans le JSON. La CI doit tester une publication ordinaire et chaque report de jour férié.
 - BoJ: renouveler les fins de réunions puis, après chaque réunion même en cas de statu quo, mettre à jour uniquement `config/boj-policy.json`, y compris l'empreinte SHA-256 du PDF. L'index officiel bloque toute nouvelle décision non revue et le builder vérifie les octets du document.
+- Pour `boj-new-decision`, ouvrir la dernière décision depuis l'index officiel, vérifier le taux **et les notes de date d'effet**, puis mettre à jour le contrat v2. Ne jamais reporter automatiquement l'ancien taux ni appliquer immédiatement un taux futur. Après revue, générer le candidat réel avec la dernière donnée de production copiée dans le répertoire temporaire, valider, puis livrer l'artefact exact. `boj-source-hash` exige de revoir le document modifié; une erreur réseau exige de rétablir la collecte. Les échecs restent visibles dans `status.json` et dans les pastilles FR/EN.
 - BCE: TARGET2 est calculé, y compris Vendredi saint, lundi de Pâques, 1er mai, 25 et 26 décembre.
 - FRED: API JSON si une clé est présente, sinon CSV officiel; aucune valeur de repli n'est publiée en cas de panne.
 - Massive: `MASSIVE_API_KEY` est optionnelle et exclusivement serveur. Une panne Massive ne bloque pas le snapshot BCE.

@@ -32,6 +32,7 @@ from yct_quality import (
     PRIMARY_SOURCE_URLS,
     QualityError,
     boj_config_state,
+    boj_rate_at,
     content_sha256,
     detect_revisions,
     iso_timestamp,
@@ -581,6 +582,7 @@ def main(now=None):
     try:
         calendar = load_calendar(SOURCE_CALENDAR_PATH)
         boj_policy = load_boj_policy(BOJ_POLICY_PATH)
+        boj_rate = boj_rate_at(boj_policy, now)
     except Exception as exc:  # noqa: BLE001
         status["error_code"] = _error_code(exc)
         atomic_write(status_path, status)
@@ -740,8 +742,10 @@ def main(now=None):
             "fed_lower": lower,
             "fed_upper": upper,
             "fed_source": fed_source,
-            "boj": boj_policy["rate"],
+            "boj": boj_rate,
             "boj_source": "verified-config",
+            **({"boj_announced": boj_policy["rate"], "boj_effective_from": boj_policy["effective_from"]}
+               if boj_policy.get("effective_from") else {}),
         },
         "fx": fx,
         "cot": cot,

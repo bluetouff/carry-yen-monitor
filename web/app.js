@@ -37,6 +37,10 @@
     sourceFallback:"config fallback",
     sourceStale:"review required",
     sourceFailed:"check failed",
+    bojNewDecision:"new policy decision awaiting verification",
+    bojDocumentChanged:"policy document changed, verification required",
+    announcedRate:"announced target",
+    effectiveFrom:"effective from",
     sourceOptional:"optional, not configured",
     sourceSample:"sample",
     sourceUnavailable:"unavailable",
@@ -84,6 +88,10 @@
     sourceFallback:"repli config",
     sourceStale:"à revérifier",
     sourceFailed:"échec du contrôle",
+    bojNewDecision:"nouvelle décision monétaire à vérifier",
+    bojDocumentChanged:"document monétaire modifié, vérification requise",
+    announcedRate:"cible annoncée",
+    effectiveFrom:"applicable à partir du",
     sourceOptional:"optionnel, non configuré",
     sourceSample:"échantillon",
     sourceUnavailable:"indisponible",
@@ -100,7 +108,7 @@
   var state = {
     spot:null, market:null, fxSeries:[], cot:[], tff:[], cotMode:"cot", move4w:null,
     generated:null, publishedAt:null, sources:{}, health:null, runStatus:null,
-    methodology:null
+    methodology:null, rates:null
   };
 
   var $ = function(id){ return document.getElementById(id); };
@@ -116,6 +124,7 @@
       if(state.fxSeries.length){ state.spot = state.fxSeries[state.fxSeries.length-1].v; }
       if(j.spot){ state.spot = j.spot; }
       if(j.rates){
+        state.rates = j.rates;
         if(j.rates.boj!==null && j.rates.boj!==undefined) $("iBoj").value = j.rates.boj;
         if(j.rates.fed!==null && j.rates.fed!==undefined) $("iFed").value = j.rates.fed;
       }
@@ -206,7 +215,14 @@
       var chip = document.createElement("span");
       var good = meta.status === "fresh" || meta.status === "verified-config";
       chip.className = "sourcechip "+(good?"sourceok":"sourcewarn");
-      chip.textContent = def[1]+" · "+sourceStatusLabel(meta.status)+(meta.data_as_of?" "+copy.asOf+" "+String(meta.data_as_of).slice(0,10):"");
+      var detail = meta.error_code === "boj-new-decision" ? copy.bojNewDecision :
+        meta.error_code === "boj-source-hash" ? copy.bojDocumentChanged : sourceStatusLabel(meta.status);
+      chip.textContent = def[1]+" · "+detail+(meta.data_as_of?" "+copy.asOf+" "+String(meta.data_as_of).slice(0,10):"");
+      if(def[0] === "boj" && state.rates && state.rates.boj_effective_from &&
+         state.rates.boj !== state.rates.boj_announced){
+        chip.textContent += " · "+copy.announcedRate+" "+fmt(state.rates.boj_announced,2)+" % · "+
+          copy.effectiveFrom+" "+state.rates.boj_effective_from+" (JST)";
+      }
       el.appendChild(chip);
     });
   }

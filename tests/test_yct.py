@@ -24,7 +24,13 @@ import yct_quality  # noqa: E402
 
 FIXED_NOW = datetime(2026, 8, 2, 8, 0, tzinfo=timezone.utc)
 CALENDAR = yct_quality.load_calendar(str(ROOT / "config" / "source-calendars.json"))
-BOJ_POLICY = yct_quality.load_boj_policy(str(ROOT / "config" / "boj-policy.json"))
+CURRENT_BOJ_POLICY = yct_quality.load_boj_policy(str(ROOT / "config" / "boj-policy.json"))
+# Historical fixture: contract tests must not depend on the next policy decision.
+BOJ_POLICY = {
+    "schema_version": 1, "rate": 1.0, "data_as_of": "2026-07-31",
+    "source_url": "https://www.boj.or.jp/en/mopo/mpmdeci/mpr_2026/k260731a.pdf",
+    "source_sha256": "f862844f0b476f44bcd76044475755f2bae5c22fea72fd3425bc946ce32e6470",
+}
 
 
 def position_api_fixture(kind="legacy", count=170, code="097741"):
@@ -92,7 +98,10 @@ def fx_csv_fixture():
 
 
 def run_paths(directory):
+    policy_path = os.path.join(directory, "boj-policy.json")
+    Path(policy_path).write_text(json.dumps(BOJ_POLICY), encoding="utf-8")
     return {
+        "BOJ_POLICY_PATH": policy_path,
         "OUT_PATH": os.path.join(directory, "data.json"),
         "STATUS_PATH": os.path.join(directory, "status.json"),
         "CANDIDATE_PATH": os.path.join(directory, "candidate.json"),
@@ -100,7 +109,7 @@ def run_paths(directory):
     }
 
 
-def run_successfully(paths, now=FIXED_NOW, cot=None):
+def run_successfully(paths, now=FIXED_NOW, cot=None, boj_error=None):
     cot = cot or position_rows("legacy")
     with mock.patch.object(build_snapshot, "OUT_PATH", paths["OUT_PATH"]), mock.patch.dict(
         os.environ, paths, clear=False
@@ -111,7 +120,7 @@ def run_successfully(paths, now=FIXED_NOW, cot=None):
     ), mock.patch.object(
         build_snapshot, "fetch_fed_rate", return_value=(3.625, 3.5, 3.75, "2026-07-31", "fred-csv")
     ), mock.patch.object(
-        build_snapshot, "fetch_boj_index", return_value={
+        build_snapshot, "fetch_boj_index", side_effect=boj_error, return_value={
             "latest_statement_date": "2026-07-31",
             "index_url": "https://www.boj.or.jp/en/mopo/mpmdeci/state_2026/index.htm",
             "statement_url": BOJ_POLICY["source_url"],
@@ -139,6 +148,28 @@ class CalendarTests(unittest.TestCase):
         christmas = datetime(2026, 12, 26, 18, 0, tzinfo=timezone.utc)
         self.assertEqual(yct_quality.expected_ecb_reference_date(christmas), date(2026, 12, 24))
 
+    def test_cftc_release_grace_accepts_new_report_only_after_release(self):
+        release = datetime(2026, 9, 18, 19, 30, tzinfo=timezone.utc)
+        old = position_rows()
+        new = position_rows()
+        for rows, latest in ((old, date(2026, 9, 8)), (new, date(2026, 9, 15))):
+            delta = latest - date.fromisoformat(rows[-1]["d"])
+            for row in rows:
+                row["d"] = (date.fromisoformat(row["d"]) + delta).isoformat()
+        for now, old_ok, new_ok in (
+            (release - timedelta(seconds=1), True, False),
+            (release, True, True),
+            (release + timedelta(minutes=89, seconds=59), True, True),
+            (release + timedelta(minutes=90), False, True),
+        ):
+            for rows, accepted in ((old, old_ok), (new, new_ok)):
+                with self.subTest(now=now, latest=rows[-1]["d"]):
+                    if accepted:
+                        yct_quality.validate_position_rows(rows, now, CALENDAR)
+                    else:
+                        with self.assertRaises(yct_quality.QualityError):
+                            yct_quality.validate_position_rows(rows, now, CALENDAR)
+
     def test_boj_configuration_expires_after_next_meeting_grace(self):
         before = datetime(2026, 9, 18, 4, 0, tzinfo=timezone.utc)
         after = datetime(2026, 9, 20, 0, 0, tzinfo=timezone.utc)
@@ -155,10 +186,30 @@ class CalendarTests(unittest.TestCase):
         )
 
     def test_versioned_boj_policy_is_the_single_public_contract(self):
-        self.assertEqual(BOJ_POLICY["rate"], 1.0)
-        self.assertEqual(BOJ_POLICY["data_as_of"], "2026-07-31")
-        self.assertTrue(BOJ_POLICY["source_url"].startswith("https://www.boj.or.jp/"))
-        self.assertEqual(len(BOJ_POLICY["source_sha256"]), 64)
+        self.assertEqual(CURRENT_BOJ_POLICY["rate"], 1.25)
+        self.assertEqual(CURRENT_BOJ_POLICY["data_as_of"], "2026-09-18")
+        self.assertEqual(CURRENT_BOJ_POLICY["effective_from"], "2026-09-24")
+        self.assertEqual(CURRENT_BOJ_POLICY["previous_rate"], 1.0)
+        self.assertTrue(CURRENT_BOJ_POLICY["source_url"].startswith("https://www.boj.or.jp/"))
+        self.assertEqual(len(CURRENT_BOJ_POLICY["source_sha256"]), 64)
+
+    def test_announced_boj_hike_applies_only_on_its_effective_date_in_japan(self):
+        before = datetime(2026, 9, 23, 14, 59, 59, tzinfo=timezone.utc)
+        after = before + timedelta(seconds=1)
+        self.assertEqual(yct_quality.boj_rate_at(CURRENT_BOJ_POLICY, before), 1.0)
+        self.assertEqual(yct_quality.boj_rate_at(CURRENT_BOJ_POLICY, after), 1.25)
+        with self.assertRaises(yct_quality.QualityError):
+            yct_quality.boj_rate_at(CURRENT_BOJ_POLICY, FIXED_NOW)
+
+    def test_invalid_boj_transitions_fail_closed(self):
+        for changes in ({"previous_rate": None}, {"previous_rate": float("nan")},
+                        {"effective_from": "2026-09-17"}, {"effective_from": "2026-09-24garbage"},
+                        {"source_url": "https://www.boj.or.jp@evil.test/decision.pdf"}):
+            with self.subTest(changes=changes), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "policy.json"
+                path.write_text(json.dumps(dict(CURRENT_BOJ_POLICY, **changes)))
+                with self.assertRaises(yct_quality.QualityError):
+                    yct_quality.load_boj_policy(str(path))
 
 
 class SourceTests(unittest.TestCase):
@@ -250,7 +301,7 @@ class SourceTests(unittest.TestCase):
         '''
         with mock.patch.object(build_snapshot, "http_get_text", return_value=document):
             with self.assertRaisesRegex(yct_quality.QualityError, "nouvelle decision"):
-                build_snapshot.fetch_boj_index()
+                build_snapshot.fetch_boj_index(policy=BOJ_POLICY)
 
     def test_boj_index_rejects_a_changed_primary_document(self):
         document = '''
@@ -298,6 +349,43 @@ class HttpClientTests(unittest.TestCase):
 
 
 class TransactionTests(unittest.TestCase):
+    def test_effective_date_promotes_new_rate_even_when_market_data_is_unchanged(self):
+        before = datetime(2026, 8, 2, 14, 59, 59, tzinfo=timezone.utc)
+        after = before + timedelta(seconds=1)
+        with tempfile.TemporaryDirectory() as directory:
+            paths = run_paths(directory)
+            policy = dict(BOJ_POLICY, schema_version=2, effective_from="2026-08-03", previous_rate=0.75)
+            Path(paths["BOJ_POLICY_PATH"]).write_text(json.dumps(policy))
+            self.assertEqual(run_successfully(paths, now=before), 0)
+            old = json.loads(Path(paths["OUT_PATH"]).read_text())
+            self.assertEqual(old["rates"]["boj"], 0.75)
+            self.assertEqual(old["rates"]["boj_announced"], 1.0)
+            errors, _ = verify_snapshot.validate(paths["OUT_PATH"], now=after,
+                                                  boj_policy_path=paths["BOJ_POLICY_PATH"])
+            self.assertIn("taux BoJ different du contrat versionne a cette date", errors)
+            self.assertEqual(run_successfully(paths, now=after), 0)
+            new = json.loads(Path(paths["OUT_PATH"]).read_text())
+            self.assertEqual(new["rates"]["boj"], 1.0)
+            self.assertNotEqual(old["data_fingerprint"], new["data_fingerprint"])
+            self.assertNotEqual(old["generated"], new["generated"])
+            for key in ("cot", "tff", "fx"):
+                self.assertEqual(old[key], new[key])
+            body = Path(paths["OUT_PATH"]).read_bytes()
+            self.assertEqual(run_successfully(paths, now=after + timedelta(minutes=1)), 0)
+            self.assertEqual(body, Path(paths["OUT_PATH"]).read_bytes())
+
+    def test_unreviewed_boj_decision_preserves_data_and_exposes_precise_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = run_paths(directory)
+            self.assertEqual(run_successfully(paths), 0)
+            body = Path(paths["OUT_PATH"]).read_bytes()
+            error = yct_quality.QualityError("boj-new-decision", "nouvelle decision BoJ a examiner")
+            self.assertEqual(run_successfully(paths, boj_error=error), 1)
+            self.assertEqual(body, Path(paths["OUT_PATH"]).read_bytes())
+            status = json.loads(Path(paths["STATUS_PATH"]).read_text())
+            self.assertEqual(status["sources"]["boj"]["error_code"], "boj-new-decision")
+            self.assertFalse(status["published"])
+
     def test_schema_two_migration_compares_only_fields_that_existed(self):
         with tempfile.TemporaryDirectory() as directory:
             paths = run_paths(directory)
@@ -412,7 +500,7 @@ class ContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             paths = run_paths(directory)
             self.assertEqual(run_successfully(paths), 0)
-            errors, data = verify_snapshot.validate(paths["OUT_PATH"], now=FIXED_NOW)
+            errors, data = verify_snapshot.validate(paths["OUT_PATH"], now=FIXED_NOW, boj_policy_path=paths["BOJ_POLICY_PATH"])
             status_errors, _ = verify_snapshot.validate_status(paths["STATUS_PATH"], data, now=FIXED_NOW)
         self.assertEqual(errors, [])
         self.assertEqual(status_errors, [])
@@ -424,7 +512,7 @@ class ContractTests(unittest.TestCase):
             data = json.loads(Path(paths["OUT_PATH"]).read_text(encoding="utf-8"))
             data["tff"][-1]["net"] += 1
             Path(paths["OUT_PATH"]).write_text(json.dumps(data), encoding="utf-8")
-            errors, _ = verify_snapshot.validate(paths["OUT_PATH"], now=FIXED_NOW)
+            errors, _ = verify_snapshot.validate(paths["OUT_PATH"], now=FIXED_NOW, boj_policy_path=paths["BOJ_POLICY_PATH"])
         self.assertTrue(any("net incoherent" in error or "empreinte" in error for error in errors))
 
     def test_verifier_rejects_a_locally_redefined_risk_formula(self):
@@ -439,7 +527,7 @@ class ContractTests(unittest.TestCase):
             }
             data["data_fingerprint"] = yct_quality.snapshot_fingerprint(data)
             Path(paths["OUT_PATH"]).write_text(json.dumps(data), encoding="utf-8")
-            errors, _ = verify_snapshot.validate(paths["OUT_PATH"], now=FIXED_NOW)
+            errors, _ = verify_snapshot.validate(paths["OUT_PATH"], now=FIXED_NOW, boj_policy_path=paths["BOJ_POLICY_PATH"])
         self.assertIn("contrat methodologique inattendu", errors)
 
     def test_verifier_rejects_spoofed_primary_source_provenance(self):
@@ -450,7 +538,7 @@ class ContractTests(unittest.TestCase):
             data["sources"]["cot"]["source_url"] = "https://example.test/cot.json"
             data["data_fingerprint"] = yct_quality.snapshot_fingerprint(data)
             Path(paths["OUT_PATH"]).write_text(json.dumps(data), encoding="utf-8")
-            errors, _ = verify_snapshot.validate(paths["OUT_PATH"], now=FIXED_NOW)
+            errors, _ = verify_snapshot.validate(paths["OUT_PATH"], now=FIXED_NOW, boj_policy_path=paths["BOJ_POLICY_PATH"])
         self.assertIn("URL primaire cot inattendue", errors)
 
     def test_frontend_exposes_distinct_series_and_correct_yen_sign(self):

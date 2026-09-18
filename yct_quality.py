@@ -8,6 +8,7 @@ import os
 from copy import deepcopy
 from datetime import date, datetime, time as clock_time, timedelta, timezone
 from zoneinfo import ZoneInfo
+from urllib.parse import urlsplit
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CALENDAR_PATH = os.path.join(ROOT, "config", "source-calendars.json")
@@ -110,27 +111,46 @@ def load_boj_policy(path=None):
     try:
         with open(path, "r", encoding="utf-8") as handle:
             policy = json.load(handle)
-        if policy.get("schema_version") != 1:
+        if policy.get("schema_version") not in (1, 2):
             raise ValueError("schema")
         rate = float(policy["rate"])
-        data_as_of = parse_date(policy["data_as_of"]).isoformat()
+        data_as_of = date.fromisoformat(policy["data_as_of"]).isoformat()
         source_url = str(policy["source_url"])
         source_sha256 = str(policy["source_sha256"])
         if not math.isfinite(rate) or not -1 <= rate <= 15:
             raise ValueError("rate")
-        if not source_url.startswith("https://www.boj.or.jp/"):
+        source = urlsplit(source_url)
+        if source.scheme != "https" or source.netloc != "www.boj.or.jp" or source.query or source.fragment:
             raise ValueError("source_url")
         if len(source_sha256) != 64 or any(character not in "0123456789abcdef" for character in source_sha256):
             raise ValueError("source_sha256")
+        transition = {}
+        if policy["schema_version"] == 2:
+            effective_from = date.fromisoformat(policy["effective_from"]).isoformat()
+            previous_rate = float(policy["previous_rate"])
+            if effective_from < data_as_of or not math.isfinite(previous_rate) or not -1 <= previous_rate <= 15:
+                raise ValueError("effective_from/previous_rate")
+            transition = {"effective_from": effective_from, "previous_rate": previous_rate}
     except Exception as exc:  # noqa: BLE001
         raise QualityError("boj-policy-contract", "configuration de politique BoJ invalide") from exc
     return {
-        "schema_version": 1,
+        "schema_version": policy["schema_version"],
         "rate": rate,
         "data_as_of": data_as_of,
         "source_url": source_url,
         "source_sha256": source_sha256,
+        **transition,
     }
+
+
+def boj_rate_at(policy, now):
+    """Apply a reviewed decision on its effective date in Japan, never on announcement."""
+    local_date = now.astimezone(ZoneInfo("Asia/Tokyo")).date().isoformat()
+    if local_date < policy["data_as_of"]:
+        raise QualityError("boj-future-decision", "decision BoJ encore future")
+    if policy.get("effective_from") and local_date < policy["effective_from"]:
+        return policy["previous_rate"]
+    return policy["rate"]
 
 
 def methodology_contract():
@@ -144,13 +164,13 @@ def _previous_tuesday(value):
     return value - timedelta(days=days_since_tuesday or 7)
 
 
-def expected_cftc_report_date(now, calendar):
+def expected_cftc_report_date(now, calendar, *, with_grace=True):
     cfg = calendar.get("cftc", {})
     if now.date() > parse_date(cfg.get("valid_through")):
         raise QualityError("cftc-calendar-expired", "calendrier CFTC arrive a expiration")
     zone = ZoneInfo(cfg.get("timezone", "America/New_York"))
     hour, minute = (int(part) for part in cfg.get("release_time", "15:30").split(":"))
-    grace = timedelta(minutes=int(cfg.get("grace_minutes", 90)))
+    grace = timedelta(minutes=int(cfg.get("grace_minutes", 90)) if with_grace else 0)
     eligible = []
     for raw_date in cfg.get("release_dates", []):
         release_date = parse_date(raw_date)
@@ -268,7 +288,10 @@ def validate_position_rows(rows, now, calendar, label="CFTC"):
     if (dates[-1] - dates[0]).days < POSITION_MIN_SPAN_DAYS:
         raise QualityError("position-history", "%s : historique inferieur a trois ans" % label)
     expected = expected_cftc_report_date(now, calendar)
-    if dates[-1] != expected:
+    released = expected_cftc_report_date(now, calendar, with_grace=False)
+    # Grace tolerates the previous release while the API catches up. It must
+    # never reject the new report once its official release time has passed.
+    if dates[-1] not in {expected, released}:
         raise QualityError(
             "position-stale", "%s : derniere observation %s, %s attendue" % (label, dates[-1], expected)
         )
