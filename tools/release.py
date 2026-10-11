@@ -34,6 +34,8 @@ SOURCE_FILES = (
     "web/app.css",
     "web/app.js",
     "web/en/index.html",
+    "web/fonts/OFL.txt",
+    "web/fonts/jetbrains-mono-latin-wght-normal.woff2",
     "web/index.html",
     "yct_quality.py",
 )

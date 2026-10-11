@@ -586,6 +586,14 @@ class ContractTests(unittest.TestCase):
                 self.assertIsNotNone(match, "%s sans version de contenu dans %s" % (name, page))
                 self.assertEqual(match.group(1), digest)
 
+    def test_shared_font_is_self_hosted_versioned_and_licensed(self):
+        css = (ROOT / "web" / "app.css").read_text(encoding="utf-8")
+        font = ROOT / "web" / "fonts" / "jetbrains-mono-latin-wght-normal.woff2"
+        digest = hashlib.sha256(font.read_bytes()).hexdigest()[:12]
+        self.assertIn('/fonts/%s?v=%s' % (font.name, digest), css)
+        self.assertNotRegex(css, r'url\(["\x27]?(?:https?:)?//')
+        self.assertIn("SIL OPEN FONT LICENSE Version 1.1", (font.parent / "OFL.txt").read_text(encoding="utf-8"))
+
     def test_deployment_maps_all_runtime_surfaces(self):
         apache = (ROOT / "deploy" / "yct.l0g.fr.conf").read_text(encoding="utf-8")
         service = (ROOT / "deploy" / "yct-snapshot.service").read_text(encoding="utf-8")
@@ -603,6 +611,10 @@ class ContractTests(unittest.TestCase):
         self.assertIn("/var/www/html/yct/en", activation)
         self.assertIn("backup_optional /var/www/html/yct/en/index.html", activation)
         self.assertIn("restore_optional en-index.html", activation)
+        self.assertIn("web/fonts/jetbrains-mono-latin-wght-normal.woff2", activation)
+        self.assertIn("backup_optional /var/www/html/yct/fonts/jetbrains-mono-latin-wght-normal.woff2", activation)
+        self.assertIn("restore_optional jetbrains-mono.woff2", activation)
+        self.assertIn("restore_optional font-OFL.txt", activation)
 
     def test_release_artifact_is_allowlisted_and_secret_scanned(self):
         release_source = (ROOT / "tools" / "release.py").read_text(encoding="utf-8")
@@ -610,6 +622,8 @@ class ContractTests(unittest.TestCase):
         self.assertIn("SOURCE_FILES", release_source)
         self.assertIn("SECRET_PATTERNS", release_source)
         self.assertIn('"web/en/index.html"', release_source)
+        self.assertIn('"web/fonts/jetbrains-mono-latin-wght-normal.woff2"', release_source)
+        self.assertIn('"web/fonts/OFL.txt"', release_source)
         self.assertNotIn(".env\"", release_source)
         self.assertIn("PYTHONDONTWRITEBYTECODE=1 python3 -m unittest", runbook)
         self.assertGreaterEqual(runbook.count("verify-dir"), 2)

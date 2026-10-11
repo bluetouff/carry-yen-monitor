@@ -94,6 +94,7 @@ Bands: Low (under 30), Moderate (30 to 55), Elevated (55 to 78), Critical (78 an
 ```
 web/index.html web/en/index.html        French and English application routes
 web/app.css web/app.js                  shared presentation and bilingual logic
+web/fonts/                              self-hosted JetBrains Mono and its OFL license
 web/data.json                            demo sample (synthetic)
 build_snapshot.py                        snapshot builder, Python stdlib only
 yct_quality.py                           shared calendars and quality contracts
@@ -132,4 +133,6 @@ Information and analysis tool. Nothing here is investment, financial, or tax adv
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). The unmodified, self-hosted JetBrains Mono font uses
+the [SIL Open Font License 1.1](web/fonts/OFL.txt). Its Latin variable WOFF2 is
+shared with the l0g design; no font CDN or additional runtime dependency is used.

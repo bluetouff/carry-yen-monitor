@@ -94,6 +94,7 @@ Bandes: Faible (moins de 30), Modéré (30 à 55), Élevé (55 à 78), Critique 
 ```
 web/index.html web/en/index.html        routes française et anglaise de l'application
 web/app.css web/app.js                  présentation et logique bilingue partagées
+web/fonts/                              JetBrains Mono auto-hébergée et sa licence OFL
 web/data.json                            echantillon de demonstration (synthetique)
 build_snapshot.py                        builder du snapshot, Python stdlib uniquement
 yct_quality.py                           calendriers et contrats de qualité partagés
@@ -132,4 +133,6 @@ Outil d'information et d'analyse. Rien ici n'est un conseil en investissement, f
 
 ## Licence
 
-MIT. Voir [LICENSE](LICENSE).
+MIT. Voir [LICENSE](LICENSE). La police JetBrains Mono auto-hébergée, non modifiée,
+relève de la [SIL Open Font License 1.1](web/fonts/OFL.txt). Son WOFF2 variable
+latin reprend celui de la charte l0g, sans CDN ni dépendance d'exécution ajoutée.

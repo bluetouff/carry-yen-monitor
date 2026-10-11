@@ -25,6 +25,7 @@ Apache 443 --> application statique + data.json + status.json + market.json opti
 
 - URLs: `https://yct.l0g.fr/`, `/en/`, `/data.json`, `/status.json` et `/market.json` si Massive est configuré.
 - `/` reste la route française et `/en/` la route anglaise complète. Elles partagent strictement `app.css`, `app.js` et les mêmes JSON canoniques.
+- La charte l0g et les liens vers `https://l0g.fr/` sont communs aux deux langues. JetBrains Mono et sa licence résident dans `web/fonts/`, figurent dans le manifeste et sont installées, sauvegardées et restaurées avec le front. `verify_live.py` compare aussi leurs octets en HTTPS.
 - Le navigateur ne contacte que `yct.l0g.fr`: aucun script, pixel, police, image ou appel automatique tiers.
 - `data.json` est toujours le dernier snapshot intégralement sain. Une panne ne le modifie jamais.
 - `status.json` expose le dernier contrôle, avec codes d'erreur normalisés, sans URL signée ni message brut pouvant contenir un secret.
@@ -192,7 +193,7 @@ Pour une nouvelle machine uniquement:
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin yct
 sudo install -d -o yct -g yct -m 0755 /var/lib/yct
 sudo install -d -o root -g root -m 0755 /opt/yct /etc/yct /var/www/html/yct
-sudo install -d -o root -g root -m 0755 /var/www/html/yct/en
+sudo install -d -o root -g root -m 0755 /var/www/html/yct/en /var/www/html/yct/fonts
 sudo install -o root -g root -m 0755 build_snapshot.py yct_quality.py verify_snapshot.py /opt/yct/
 sudo install -o root -g root -m 0644 config/boj-policy.json /opt/yct/boj-policy.json
 sudo install -o root -g root -m 0644 config/source-calendars.json /opt/yct/source-calendars.json
@@ -200,6 +201,7 @@ sudo install -o root -g root -m 0600 env.example /etc/yct/env
 sudo install -o root -g root -m 0644 deploy/yct-snapshot.service deploy/yct-snapshot.timer /etc/systemd/system/
 sudo install -o root -g root -m 0644 web/index.html web/app.css web/app.js /var/www/html/yct/
 sudo install -o root -g root -m 0644 web/en/index.html /var/www/html/yct/en/index.html
+sudo install -o root -g root -m 0644 web/fonts/jetbrains-mono-latin-wght-normal.woff2 web/fonts/OFL.txt /var/www/html/yct/fonts/
 sudo systemctl daemon-reload
 sudo systemctl enable --now yct-snapshot.timer
 sudo systemctl start yct-snapshot.service

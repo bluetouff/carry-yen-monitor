@@ -11,16 +11,35 @@
 <link rel="alternate" hreflang="fr" href="https://yct.l0g.fr/">
 <link rel="alternate" hreflang="en" href="https://yct.l0g.fr/en/">
 <link rel="alternate" hreflang="x-default" href="https://yct.l0g.fr/">
-<link rel="stylesheet" href="../app.css?v=ff2c70cbd0ec">
+<link rel="stylesheet" href="../app.css?v=adf0c806bcd7">
 </head>
 <body>
+<a class="skip-link" href="#dashboard">Skip to dashboard</a>
 <div class="wrap">
 
+  <header class="site-header">
+    <a class="site-brand" href="https://l0g.fr/" aria-label="l0g.fr, back to the main site">
+      <span class="wordmark" aria-hidden="true">l<span class="zero">0</span>g<span class="brand-cursor">_</span></span>
+      <span class="site-caption" aria-hidden="true"><span>Read the mechanisms</span>before they become the story</span>
+    </a>
+    <div class="header-actions">
+      <a class="home-link" href="https://l0g.fr/">Back to l0g.fr <span aria-hidden="true">↗</span></a>
+      <nav class="languages" aria-label="Language"><a href="/" lang="fr">FR</a><a href="/en/" lang="en" aria-current="page">EN</a></nav>
+    </div>
+  </header>
+  <nav class="section-nav" aria-label="Monitor sections">
+    <span class="current">Yen Carry Monitor</span>
+    <a href="#positionnement">Positioning</a><a href="#calculateur">Calculator</a><a href="#sources">Sources</a>
+  </nav>
+
+  <main id="dashboard">
   <header class="tape">
-    <h1 class="brand"><b>鈴</b> Carry <b>Yen</b> <span class="v">/ monitor</span></h1>
-    <div class="tag">JPY speculative positioning &middot; rate differential &middot; unwind risk</div>
+    <div class="intro">
+      <p class="eyebrow">// CARRY-TRADE OBSERVATORY</p>
+      <h1 class="brand">Carry <b>Yen</b> <span class="v">/ monitor</span></h1>
+      <div class="tag">JPY speculative positioning &middot; rate differential &middot; unwind risk</div>
+    </div>
     <div class="pill"><span class="dot" id="statusDot"></span><span id="statusTxt">loading...</span></div>
-    <nav class="languages" aria-label="Language"><a href="/" lang="fr">FR</a><a href="/en/" lang="en" aria-current="page">EN</a></nav>
   </header>
 
   <div class="kpis" id="kpis">
@@ -31,7 +50,7 @@
   </div>
 
   <div class="grid2">
-    <section class="card">
+    <section class="card" id="positionnement">
       <h2>Who is shorting the yen: CFTC positioning</h2>
       <div class="cap">Net position of the broad "non-commercial" category in the Legacy report for the standard CME yen future. It is not the TFF "leveraged funds" category. Net short means a bet against the yen; a reduction in shorts may signal an unwind.</div>
       <div class="gauge">
@@ -79,7 +98,7 @@
   </div>
 
   <div class="grid2 rev">
-    <section class="card calc">
+    <section class="card calc" id="calculateur">
       <h2>Carry calculator</h2>
       <div class="calcgrid">
         <div><label for="iBoj">BoJ target (%)</label><input id="iBoj" type="number" step="0.05" value="1.00"></div>
@@ -104,7 +123,7 @@
     </section>
   </div>
 
-  <section class="card">
+  <section class="card" id="sources">
     <h2>Sources and methodology</h2>
     <div class="sourcehealth" id="sourceHealth" aria-label="Source freshness"></div>
     <div class="sources">
@@ -119,12 +138,18 @@
       <p style="color:var(--faint)">For further work on the true size of the global carry trade and Treasury exposure: BIS Quarterly Review, US Treasury TIC data and the BoJ balance sheet.</p>
     </div>
   </section>
+  </main>
 
   <footer>
-    Snapshot architecture. The browser reads only same-origin JSON regenerated server-side, with no third party contacted and no key exposed. <span id="ts"></span>
+    <nav class="footer-links" aria-label="The l0g environment">
+      <a href="https://l0g.fr/">l0g.fr</a>
+      <a href="https://l0g.fr/en/methodology/">l0g methodology</a>
+      <a href="https://github.com/bluetouff/carry-yen-monitor">Source code</a>
+    </nav>
+    <p>Snapshot architecture. The browser reads only same-origin JSON regenerated server-side, with no third party contacted and no key exposed. <span id="ts"></span></p>
   </footer>
 
 </div>
-<script src="../app.js?v=740f3ebc8fdb"></script>
+<script src="../app.js?v=f07c1ad3b6f9"></script>
 </body>
 </html>

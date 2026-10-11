@@ -49,6 +49,12 @@ def main():
         ("en/", "en/index.html", "/en/"),
         ("app.css", "app.css", "/app.css"),
         ("app.js", "app.js", "/app.js"),
+        (
+            "fonts/jetbrains-mono-latin-wght-normal.woff2",
+            "fonts/jetbrains-mono-latin-wght-normal.woff2",
+            "/fonts/jetbrains-mono-latin-wght-normal.woff2",
+        ),
+        ("fonts/OFL.txt", "fonts/OFL.txt", "/fonts/OFL.txt"),
     )
     for remote_path, local_name, label in assets:
         local_path = os.path.join(web_dir, *local_name.split("/"))

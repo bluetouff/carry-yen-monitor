@@ -43,6 +43,8 @@ for required_path in \
   "$SOURCE_DIR/web/en/index.html" \
   "$SOURCE_DIR/web/app.css" \
   "$SOURCE_DIR/web/app.js" \
+  "$SOURCE_DIR/web/fonts/jetbrains-mono-latin-wght-normal.woff2" \
+  "$SOURCE_DIR/web/fonts/OFL.txt" \
   /opt/yct/build_snapshot.py \
   /etc/yct/env \
   /etc/systemd/system/yct-snapshot.service \
@@ -121,6 +123,8 @@ backup_optional /opt/yct/SOURCE_SHA SOURCE_SHA
 backup_optional /var/lib/yct/status.json status.json
 backup_optional /var/lib/yct/market.json market.json
 backup_optional /var/www/html/yct/en/index.html en-index.html
+backup_optional /var/www/html/yct/fonts/jetbrains-mono-latin-wght-normal.woff2 jetbrains-mono.woff2
+backup_optional /var/www/html/yct/fonts/OFL.txt font-OFL.txt
 
 ENV_TMP=""
 SHA_TMP=""
@@ -152,6 +156,10 @@ rollback() {
   if [[ ! -f "$BACKUP_DIR/.had-en-index.html" ]]; then
     rmdir /var/www/html/yct/en 2>/dev/null || true
   fi
+  install -d -o root -g root -m 0755 /var/www/html/yct/fonts
+  restore_optional jetbrains-mono.woff2 /var/www/html/yct/fonts/jetbrains-mono-latin-wght-normal.woff2 root root 0644
+  restore_optional font-OFL.txt /var/www/html/yct/fonts/OFL.txt root root 0644
+  rmdir /var/www/html/yct/fonts 2>/dev/null || true
   rm -f /var/lib/yct/candidate.json
   rm -f /var/www/html/yct/index.html.next /var/www/html/yct/app.css.next /var/www/html/yct/app.js.next \
     /var/www/html/yct/en/index.html.next
@@ -200,6 +208,9 @@ systemctl start yct-snapshot.service
   --calendar-path /opt/yct/source-calendars.json \
   --boj-policy-path /opt/yct/boj-policy.json
 
+install -d -o root -g root -m 0755 /var/www/html/yct/fonts
+install -o root -g root -m 0644 "$SOURCE_DIR/web/fonts/jetbrains-mono-latin-wght-normal.woff2" /var/www/html/yct/fonts/jetbrains-mono-latin-wght-normal.woff2
+install -o root -g root -m 0644 "$SOURCE_DIR/web/fonts/OFL.txt" /var/www/html/yct/fonts/OFL.txt
 install -o root -g root -m 0644 "$SOURCE_DIR/web/app.css" /var/www/html/yct/app.css.next
 install -o root -g root -m 0644 "$SOURCE_DIR/web/app.js" /var/www/html/yct/app.js.next
 install -d -o root -g root -m 0755 /var/www/html/yct/en

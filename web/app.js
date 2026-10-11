@@ -168,14 +168,14 @@
     if(minY<0 && maxY>0){ zero = py(0); }
     var grid="";
     for(var g=0; g<=4; g++){ var gy=pad.t+(g/4)*ih; var gv=maxY-(g/4)*(maxY-minY);
-      grid += '<line x1="'+pad.l+'" y1="'+gy.toFixed(1)+'" x2="'+(W-pad.r)+'" y2="'+gy.toFixed(1)+'" stroke="#22403c" stroke-width="1"/>';
-      grid += '<text x="'+(pad.l-6)+'" y="'+(gy+3).toFixed(1)+'" fill="#6f9b94" font-size="10" font-family="ui-monospace,monospace" text-anchor="end">'+ (opts.fmtY?opts.fmtY(gv):Math.round(gv)) +'</text>';
+      grid += '<line x1="'+pad.l+'" y1="'+gy.toFixed(1)+'" x2="'+(W-pad.r)+'" y2="'+gy.toFixed(1)+'" stroke="var(--line)" stroke-width="1"/>';
+      grid += '<text x="'+(pad.l-6)+'" y="'+(gy+3).toFixed(1)+'" fill="var(--dim)" font-size="10" font-family="inherit" text-anchor="end">'+ (opts.fmtY?opts.fmtY(gv):Math.round(gv)) +'</text>';
     }
-    var col = opts.color||"#00f0d0";
+    var col = opts.color||"var(--usd)";
     var last = pts[pts.length-1];
     var svg = '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" role="img">'
       + grid
-      + (zero!==null?'<line x1="'+pad.l+'" y1="'+zero.toFixed(1)+'" x2="'+(W-pad.r)+'" y2="'+zero.toFixed(1)+'" stroke="#456b65" stroke-width="1" stroke-dasharray="3 3"/>':'')
+      + (zero!==null?'<line x1="'+pad.l+'" y1="'+zero.toFixed(1)+'" x2="'+(W-pad.r)+'" y2="'+zero.toFixed(1)+'" stroke="var(--line-strong)" stroke-width="1" stroke-dasharray="3 3"/>':'')
       + '<defs><linearGradient id="grad_'+opts.id+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+col+'" stop-opacity="0.22"/><stop offset="1" stop-color="'+col+'" stop-opacity="0"/></linearGradient></defs>'
       + '<path d="'+area+'" fill="url(#grad_'+opts.id+')"/>'
       + '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="1.8" stroke-linejoin="round"/>'
@@ -236,7 +236,7 @@
       return;
     }
     lineChart($("cotChart"), series.map(function(c,i){return {x:i,y:c.net};}), {
-      id:state.cotMode, color:state.cotMode === "tff" ? "#e0b341" : "#ff6b9d",
+      id:state.cotMode, color:state.cotMode === "tff" ? "var(--gold)" : "var(--yen)",
       fmtY:function(v){return (v/1000).toFixed(0)+"k";}
     });
     $("cotStart").textContent = series[0].d;
@@ -306,7 +306,7 @@
     if(state.fxSeries.length){
       var fxs = state.fxSeries;
       var fpts = fxs.map(function(p,i){return {x:i,y:p.v};});
-      lineChart($("fxChart"), fpts, {id:"fx", color:"#00f0d0", fmtY:function(v){return v.toFixed(0);}});
+      lineChart($("fxChart"), fpts, {id:"fx", color:"var(--usd)", fmtY:function(v){return v.toFixed(0);}});
       $("fxStart").textContent = fxs[0].d;
       $("fxEnd").textContent = fxs[fxs.length-1].d;
       var lo=Math.min.apply(null,fxs.map(function(p){return p.v;})), hi=Math.max.apply(null,fxs.map(function(p){return p.v;}));
