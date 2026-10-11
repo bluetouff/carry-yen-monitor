@@ -26,6 +26,7 @@ Apache 443 --> application statique + data.json + status.json + market.json opti
 - URLs: `https://yct.l0g.fr/`, `/en/`, `/data.json`, `/status.json` et `/market.json` si Massive est configuré.
 - `/` reste la route française et `/en/` la route anglaise complète. Elles partagent strictement `app.css`, `app.js` et les mêmes JSON canoniques.
 - La charte l0g et les liens vers `https://l0g.fr/` sont communs aux deux langues. JetBrains Mono et sa licence résident dans `web/fonts/`, figurent dans le manifeste et sont installées, sauvegardées et restaurées avec le front. `verify_live.py` compare aussi leurs octets en HTTPS.
+- Les favicons l0g SVG et ICO sont de même origine, versionnés par leur empreinte dans les deux HTML et couverts par le manifeste, la sauvegarde, le rollback et le vérificateur HTTPS.
 - Le navigateur ne contacte que `yct.l0g.fr`: aucun script, pixel, police, image ou appel automatique tiers.
 - `data.json` est toujours le dernier snapshot intégralement sain. Une panne ne le modifie jamais.
 - `status.json` expose le dernier contrôle, avec codes d'erreur normalisés, sans URL signée ni message brut pouvant contenir un secret.
@@ -199,7 +200,7 @@ sudo install -o root -g root -m 0644 config/boj-policy.json /opt/yct/boj-policy.
 sudo install -o root -g root -m 0644 config/source-calendars.json /opt/yct/source-calendars.json
 sudo install -o root -g root -m 0600 env.example /etc/yct/env
 sudo install -o root -g root -m 0644 deploy/yct-snapshot.service deploy/yct-snapshot.timer /etc/systemd/system/
-sudo install -o root -g root -m 0644 web/index.html web/app.css web/app.js /var/www/html/yct/
+sudo install -o root -g root -m 0644 web/index.html web/app.css web/app.js web/favicon.svg web/favicon.ico /var/www/html/yct/
 sudo install -o root -g root -m 0644 web/en/index.html /var/www/html/yct/en/index.html
 sudo install -o root -g root -m 0644 web/fonts/jetbrains-mono-latin-wght-normal.woff2 web/fonts/OFL.txt /var/www/html/yct/fonts/
 sudo systemctl daemon-reload

@@ -94,6 +94,7 @@ Bandes: Faible (moins de 30), Modéré (30 à 55), Élevé (55 à 78), Critique 
 ```
 web/index.html web/en/index.html        routes française et anglaise de l'application
 web/app.css web/app.js                  présentation et logique bilingue partagées
+web/favicon.svg web/favicon.ico        identité l0g de même origine, compatibilité SVG et ICO
 web/fonts/                              JetBrains Mono auto-hébergée et sa licence OFL
 web/data.json                            echantillon de demonstration (synthetique)
 build_snapshot.py                        builder du snapshot, Python stdlib uniquement

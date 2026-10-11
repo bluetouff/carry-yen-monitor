@@ -94,6 +94,7 @@ Bands: Low (under 30), Moderate (30 to 55), Elevated (55 to 78), Critical (78 an
 ```
 web/index.html web/en/index.html        French and English application routes
 web/app.css web/app.js                  shared presentation and bilingual logic
+web/favicon.svg web/favicon.ico        same-origin l0g identity, SVG and ICO compatibility
 web/fonts/                              self-hosted JetBrains Mono and its OFL license
 web/data.json                            demo sample (synthetic)
 build_snapshot.py                        snapshot builder, Python stdlib only

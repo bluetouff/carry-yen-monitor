@@ -580,11 +580,13 @@ class ContractTests(unittest.TestCase):
         )
         for page in pages:
             html = page.read_text(encoding="utf-8")
-            for name in ("app.css", "app.js"):
+            for name in ("app.css", "app.js", "favicon.ico", "favicon.svg"):
                 digest = hashlib.sha256((ROOT / "web" / name).read_bytes()).hexdigest()[:12]
                 match = re.search(r'%s\?v=([0-9a-f]{12})' % re.escape(name), html)
                 self.assertIsNotNone(match, "%s sans version de contenu dans %s" % (name, page))
                 self.assertEqual(match.group(1), digest)
+                if name.startswith("favicon."):
+                    self.assertIn('href="/%s?v=%s"' % (name, digest), html)
 
     def test_shared_font_is_self_hosted_versioned_and_licensed(self):
         css = (ROOT / "web" / "app.css").read_text(encoding="utf-8")
@@ -615,6 +617,10 @@ class ContractTests(unittest.TestCase):
         self.assertIn("backup_optional /var/www/html/yct/fonts/jetbrains-mono-latin-wght-normal.woff2", activation)
         self.assertIn("restore_optional jetbrains-mono.woff2", activation)
         self.assertIn("restore_optional font-OFL.txt", activation)
+        for name in ("favicon.ico", "favicon.svg"):
+            self.assertIn('"$SOURCE_DIR/web/%s"' % name, activation)
+            self.assertIn("backup_optional /var/www/html/yct/%s" % name, activation)
+            self.assertIn("restore_optional %s" % name, activation)
 
     def test_release_artifact_is_allowlisted_and_secret_scanned(self):
         release_source = (ROOT / "tools" / "release.py").read_text(encoding="utf-8")
@@ -624,6 +630,8 @@ class ContractTests(unittest.TestCase):
         self.assertIn('"web/en/index.html"', release_source)
         self.assertIn('"web/fonts/jetbrains-mono-latin-wght-normal.woff2"', release_source)
         self.assertIn('"web/fonts/OFL.txt"', release_source)
+        self.assertIn('"web/favicon.ico"', release_source)
+        self.assertIn('"web/favicon.svg"', release_source)
         self.assertNotIn(".env\"", release_source)
         self.assertIn("PYTHONDONTWRITEBYTECODE=1 python3 -m unittest", runbook)
         self.assertGreaterEqual(runbook.count("verify-dir"), 2)

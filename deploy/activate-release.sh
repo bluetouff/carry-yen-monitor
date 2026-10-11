@@ -43,6 +43,8 @@ for required_path in \
   "$SOURCE_DIR/web/en/index.html" \
   "$SOURCE_DIR/web/app.css" \
   "$SOURCE_DIR/web/app.js" \
+  "$SOURCE_DIR/web/favicon.ico" \
+  "$SOURCE_DIR/web/favicon.svg" \
   "$SOURCE_DIR/web/fonts/jetbrains-mono-latin-wght-normal.woff2" \
   "$SOURCE_DIR/web/fonts/OFL.txt" \
   /opt/yct/build_snapshot.py \
@@ -123,6 +125,8 @@ backup_optional /opt/yct/SOURCE_SHA SOURCE_SHA
 backup_optional /var/lib/yct/status.json status.json
 backup_optional /var/lib/yct/market.json market.json
 backup_optional /var/www/html/yct/en/index.html en-index.html
+backup_optional /var/www/html/yct/favicon.ico favicon.ico
+backup_optional /var/www/html/yct/favicon.svg favicon.svg
 backup_optional /var/www/html/yct/fonts/jetbrains-mono-latin-wght-normal.woff2 jetbrains-mono.woff2
 backup_optional /var/www/html/yct/fonts/OFL.txt font-OFL.txt
 
@@ -144,6 +148,8 @@ rollback() {
   install -o root -g root -m 0644 "$BACKUP_DIR/index.html" /var/www/html/yct/index.html
   install -o root -g root -m 0644 "$BACKUP_DIR/app.css" /var/www/html/yct/app.css
   install -o root -g root -m 0644 "$BACKUP_DIR/app.js" /var/www/html/yct/app.js
+  restore_optional favicon.ico /var/www/html/yct/favicon.ico root root 0644
+  restore_optional favicon.svg /var/www/html/yct/favicon.svg root root 0644
   restore_optional yct_quality.py /opt/yct/yct_quality.py root root 0755
   restore_optional verify_snapshot.py /opt/yct/verify_snapshot.py root root 0755
   restore_optional boj-policy.json /opt/yct/boj-policy.json root root 0644
@@ -162,7 +168,7 @@ rollback() {
   rmdir /var/www/html/yct/fonts 2>/dev/null || true
   rm -f /var/lib/yct/candidate.json
   rm -f /var/www/html/yct/index.html.next /var/www/html/yct/app.css.next /var/www/html/yct/app.js.next \
-    /var/www/html/yct/en/index.html.next
+    /var/www/html/yct/en/index.html.next /var/www/html/yct/favicon.ico.next /var/www/html/yct/favicon.svg.next
   [[ -z "$ENV_TMP" ]] || rm -f "$ENV_TMP"
   [[ -z "$SHA_TMP" ]] || rm -f "$SHA_TMP"
   systemctl daemon-reload
@@ -211,11 +217,15 @@ systemctl start yct-snapshot.service
 install -d -o root -g root -m 0755 /var/www/html/yct/fonts
 install -o root -g root -m 0644 "$SOURCE_DIR/web/fonts/jetbrains-mono-latin-wght-normal.woff2" /var/www/html/yct/fonts/jetbrains-mono-latin-wght-normal.woff2
 install -o root -g root -m 0644 "$SOURCE_DIR/web/fonts/OFL.txt" /var/www/html/yct/fonts/OFL.txt
+install -o root -g root -m 0644 "$SOURCE_DIR/web/favicon.ico" /var/www/html/yct/favicon.ico.next
+install -o root -g root -m 0644 "$SOURCE_DIR/web/favicon.svg" /var/www/html/yct/favicon.svg.next
 install -o root -g root -m 0644 "$SOURCE_DIR/web/app.css" /var/www/html/yct/app.css.next
 install -o root -g root -m 0644 "$SOURCE_DIR/web/app.js" /var/www/html/yct/app.js.next
 install -d -o root -g root -m 0755 /var/www/html/yct/en
 install -o root -g root -m 0644 "$SOURCE_DIR/web/en/index.html" /var/www/html/yct/en/index.html.next
 install -o root -g root -m 0644 "$SOURCE_DIR/web/index.html" /var/www/html/yct/index.html.next
+mv /var/www/html/yct/favicon.ico.next /var/www/html/yct/favicon.ico
+mv /var/www/html/yct/favicon.svg.next /var/www/html/yct/favicon.svg
 mv /var/www/html/yct/app.css.next /var/www/html/yct/app.css
 mv /var/www/html/yct/app.js.next /var/www/html/yct/app.js
 mv /var/www/html/yct/en/index.html.next /var/www/html/yct/en/index.html

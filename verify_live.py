@@ -49,6 +49,8 @@ def main():
         ("en/", "en/index.html", "/en/"),
         ("app.css", "app.css", "/app.css"),
         ("app.js", "app.js", "/app.js"),
+        ("favicon.ico", "favicon.ico", "/favicon.ico"),
+        ("favicon.svg", "favicon.svg", "/favicon.svg"),
         (
             "fonts/jetbrains-mono-latin-wght-normal.woff2",
             "fonts/jetbrains-mono-latin-wght-normal.woff2",
