@@ -43,9 +43,10 @@ PRIMARY_SOURCE_URLS = {
 class QualityError(RuntimeError):
     """Erreur stable et classifiable, publiable par son code uniquement."""
 
-    def __init__(self, code, message):
+    def __init__(self, code, message, *, date_details=None):
         super().__init__(message)
         self.code = code
+        self.date_details = date_details or {}
 
 
 def parse_date(value):
@@ -320,8 +321,19 @@ def validate_fx_rows(rows, now):
     if (dates[-1] - dates[0]).days < FX_MIN_SPAN_DAYS:
         raise QualityError("fx-history", "BCE : historique inferieur a douze mois")
     expected = expected_ecb_reference_date(now)
-    if dates[-1] != expected:
-        raise QualityError("fx-stale", "BCE : derniere reference %s, %s attendue" % (dates[-1], expected))
+    latest = dates[-1]
+    local_today = now.astimezone(ZoneInfo("Europe/Paris")).date()
+    date_details = {"observed_as_of": latest.isoformat(), "expected_as_of": expected.isoformat()}
+    # The ECB publishes *around* 16:00, sometimes a few minutes earlier. The
+    # 17:00 grace deadline is a lower freshness bound, not an exact date to
+    # match: an already published same-day reference must remain admissible.
+    if latest > local_today:
+        raise QualityError("fx-future", "BCE : reference future", date_details=date_details)
+    if not is_target_business_day(latest):
+        raise QualityError("fx-report-day", "BCE : reference hors jour TARGET", date_details=date_details)
+    if latest < expected:
+        raise QualityError("fx-stale", "BCE : derniere reference %s, %s attendue" % (latest, expected),
+                           date_details=date_details)
     if max_change > 15:
         raise QualityError("fx-jump", "BCE : variation quotidienne aberrante")
     return round(max_change, 4)

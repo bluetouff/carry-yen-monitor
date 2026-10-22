@@ -87,6 +87,17 @@ def fx_rows():
     return rows
 
 
+def fx_history_ending(last_day):
+    """Complete synthetic history, including a requested invalid final day."""
+    rows = []
+    current = last_day - timedelta(days=390)
+    while current <= last_day:
+        if yct_quality.is_target_business_day(current) or current == last_day:
+            rows.append({"d": current.isoformat(), "v": round(150 + len(rows) * 0.01, 4)})
+        current += timedelta(days=1)
+    return rows
+
+
 def fx_csv_fixture():
     output = io.StringIO()
     writer = csv.writer(output)
@@ -148,6 +159,94 @@ class CalendarTests(unittest.TestCase):
         self.assertEqual(yct_quality.expected_ecb_reference_date(FIXED_NOW), date(2026, 7, 31))
         christmas = datetime(2026, 12, 26, 18, 0, tzinfo=timezone.utc)
         self.assertEqual(yct_quality.expected_ecb_reference_date(christmas), date(2026, 12, 24))
+
+    def test_ecb_current_reference_is_accepted_during_publication_in_summer_and_winter(self):
+        # 17:00 Paris is 15:00 UTC in summer and 16:00 UTC in winter. The
+        # official daily observation may already be available before 16:00.
+        for deadline in (
+            datetime(2026, 10, 22, 15, 0, tzinfo=timezone.utc),
+            datetime(2026, 11, 5, 16, 0, tzinfo=timezone.utc),
+        ):
+            today = deadline.date()
+            yesterday = today - timedelta(days=1)
+            for now, previous_allowed in (
+                (deadline - timedelta(hours=1, minutes=4), True),
+                (deadline - timedelta(hours=1), True),
+                (deadline - timedelta(seconds=1), True),
+                (deadline, False),
+            ):
+                expected = yesterday if previous_allowed else today
+                self.assertEqual(yct_quality.expected_ecb_reference_date(now), expected)
+                for latest, accepted, error_code in (
+                    (today, True, None),
+                    (yesterday, previous_allowed, "fx-stale"),
+                    (yesterday - timedelta(days=1), False, "fx-stale"),
+                    (today + timedelta(days=1), False, "fx-future"),
+                ):
+                    with self.subTest(now=now, latest=latest, accepted=accepted):
+                        rows = fx_history_ending(latest)
+                        if accepted:
+                            self.assertLess(yct_quality.validate_fx_rows(rows, now), 1)
+                        else:
+                            with self.assertRaises(yct_quality.QualityError) as caught:
+                                yct_quality.validate_fx_rows(rows, now)
+                            self.assertEqual(caught.exception.code, error_code)
+
+    def test_ecb_october_incident_accepts_the_published_fixing_before_grace_deadline(self):
+        now = datetime(2026, 10, 22, 14, 26, 57, tzinfo=timezone.utc)
+        rows = fx_history_ending(date(2026, 10, 22))
+        self.assertGreaterEqual(len(rows), yct_quality.FX_MIN_ROWS)
+        self.assertGreaterEqual((date.fromisoformat(rows[-1]["d"]) -
+                                 date.fromisoformat(rows[0]["d"])).days,
+                                yct_quality.FX_MIN_SPAN_DAYS)
+        self.assertEqual(yct_quality.expected_ecb_reference_date(now), date(2026, 10, 21))
+        self.assertLess(yct_quality.validate_fx_rows(rows, now), 1)
+
+    def test_ecb_reference_validation_preserves_target_weekends_and_holidays(self):
+        fixtures = (
+            (datetime(2026, 10, 25, 17, 0, tzinfo=timezone.utc), date(2026, 10, 23),
+             ((date(2026, 10, 24), "fx-report-day"), (date(2026, 10, 25), "fx-report-day"),
+              (date(2026, 10, 26), "fx-future"))),
+            (datetime(2026, 12, 25, 17, 0, tzinfo=timezone.utc), date(2026, 12, 24),
+             ((date(2026, 12, 25), "fx-report-day"), (date(2026, 12, 26), "fx-future"),
+              (date(2026, 12, 28), "fx-future"))),
+            (datetime(2026, 4, 6, 16, 0, tzinfo=timezone.utc), date(2026, 4, 2),
+             ((date(2026, 4, 3), "fx-report-day"), (date(2026, 4, 6), "fx-report-day"),
+              (date(2026, 4, 7), "fx-future"))),
+            (datetime(2026, 5, 1, 16, 0, tzinfo=timezone.utc), date(2026, 4, 30),
+             ((date(2026, 5, 1), "fx-report-day"), (date(2026, 5, 4), "fx-future"))),
+            (datetime(2026, 1, 1, 17, 0, tzinfo=timezone.utc), date(2025, 12, 31),
+             ((date(2026, 1, 1), "fx-report-day"), (date(2026, 1, 2), "fx-future"))),
+        )
+        for now, expected, rejected in fixtures:
+            with self.subTest(now=now):
+                self.assertEqual(yct_quality.expected_ecb_reference_date(now), expected)
+                self.assertLess(yct_quality.validate_fx_rows(fx_history_ending(expected), now), 1)
+            for latest, error_code in rejected:
+                with self.subTest(now=now, latest=latest):
+                    with self.assertRaises(yct_quality.QualityError) as caught:
+                        yct_quality.validate_fx_rows(fx_history_ending(latest), now)
+                    self.assertEqual(caught.exception.code, error_code)
+
+    def test_ecb_monday_grace_accepts_friday_or_monday_but_never_weekend_dates(self):
+        now = datetime(2026, 10, 26, 15, 0, tzinfo=timezone.utc)
+        self.assertEqual(yct_quality.expected_ecb_reference_date(now), date(2026, 10, 23))
+        for latest, accepted, error_code in (
+            (date(2026, 10, 22), False, "fx-stale"),
+            (date(2026, 10, 23), True, None),
+            (date(2026, 10, 24), False, "fx-report-day"),
+            (date(2026, 10, 25), False, "fx-report-day"),
+            (date(2026, 10, 26), True, None),
+            (date(2026, 10, 27), False, "fx-future"),
+        ):
+            with self.subTest(latest=latest):
+                rows = fx_history_ending(latest)
+                if accepted:
+                    self.assertLess(yct_quality.validate_fx_rows(rows, now), 1)
+                else:
+                    with self.assertRaises(yct_quality.QualityError) as caught:
+                        yct_quality.validate_fx_rows(rows, now)
+                    self.assertEqual(caught.exception.code, error_code)
 
     def test_cftc_release_grace_accepts_new_report_only_after_release(self):
         release = datetime(2026, 9, 18, 19, 30, tzinfo=timezone.utc)
@@ -255,6 +354,30 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(rows[-1]["d"], "2026-07-31")
         self.assertAlmostEqual(rows[-1]["v"], 160.2351, places=3)
         self.assertLess(max_change, 1)
+
+    def test_ecb_failure_metrics_expose_dates_without_the_raw_error_message(self):
+        now = datetime(2026, 10, 22, 15, 0, tzinfo=timezone.utc)
+
+        def stale_source(client, now, calendar):
+            del client, calendar
+            return yct_quality.validate_fx_rows(fx_history_ending(date(2026, 10, 21)), now)
+
+        with mock.patch.object(build_snapshot, "log"):
+            name, value, metrics, error = build_snapshot._source_result(
+                "fx", stale_source, now, CALENDAR, time.monotonic() + 10
+            )
+        self.assertEqual(name, "fx")
+        self.assertIsNone(value)
+        self.assertIsInstance(error, yct_quality.QualityError)
+        self.assertEqual(metrics["status"], "failed")
+        self.assertEqual(metrics["error_code"], "fx-stale")
+        self.assertEqual(metrics["observed_as_of"], "2026-10-21")
+        self.assertEqual(metrics["expected_as_of"], "2026-10-22")
+        self.assertEqual(set(metrics), {
+            "status", "latency_ms", "attempts", "bytes", "http_status", "error_code",
+            "observed_as_of", "expected_as_of",
+        })
+        self.assertNotIn(str(error), json.dumps(metrics))
 
     def test_fed_range_must_be_recent_and_narrow(self):
         lower = {"2026-07-31": 3.5}

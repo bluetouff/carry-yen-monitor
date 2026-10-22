@@ -562,6 +562,7 @@ def _source_result(name, fetcher, now, calendar, deadline):
             "bytes": client.bytes_received,
             "http_status": client.last_http_status,
             "error_code": _error_code(exc),
+            **(exc.date_details if isinstance(exc, QualityError) else {}),
         }, exc
 
 

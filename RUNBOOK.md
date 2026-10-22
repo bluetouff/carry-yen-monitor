@@ -32,6 +32,7 @@ Apache 443 --> application statique + data.json + status.json + market.json opti
 - `status.json` expose le dernier contrôle, avec codes d'erreur normalisés, sans URL signée ni message brut pouvant contenir un secret.
 - CFTC Legacy et TFF utilisent exclusivement le contrat CME JPY `097741`, exactement 170 semaines et deux catégories jamais fusionnées.
 - USD/JPY canonique est la référence quotidienne BCE. `market.json` est un spot Massive optionnel, séparé et horodaté.
+- La BCE publie vers 16 h (heure locale de Francfort/Paris), sans minute garantie. Le fixing officiel du jour est accepté dès sa présence; la veille ouvrée TARGET reste tolérée jusqu'à 17 h seulement. Une date future ou un jour de fermeture TARGET est refusé. La grâce fixe une ancienneté maximale, jamais une date exacte obligatoire. En cas de rejet, `observed_as_of` et `expected_as_of` décrivent la réponse refusée; `data_as_of` peut encore désigner le dernier snapshot conservé.
 - La formule de risque `1.0.0` reste explicitement heuristique. Toute nouvelle pondération exige un backtest documenté.
 - Les calendriers CFTC et BoJ versionnés dans `config/source-calendars.json` doivent être renouvelés avant `valid_through`.
 - La grâce CFTC tolère l'ancien rapport pendant 90 minutes après l'heure officielle de publication, tout en acceptant immédiatement le nouveau. Elle n'autorise aucun rapport avant sa publication prévue.
