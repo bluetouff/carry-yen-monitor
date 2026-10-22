@@ -32,6 +32,7 @@ jobs:
         run: |
           node --check web/app.js
           bash -n deploy/activate-release.sh
+          systemd-analyze verify deploy/yct-snapshot.service deploy/yct-snapshot.timer
       - name: Exact release artifact and secret guard
         if: matrix.python-version == '3.14'
         run: |

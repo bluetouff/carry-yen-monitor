@@ -54,10 +54,10 @@ The dashboard is built to be sober and respectful:
 
 ## Architecture, for the technical reader
 
-Transactional snapshot design. A scheduled job checks the sources several times a day. It replaces `data.json` only after complete validation; `status.json` describes every attempt and optional Massive data is kept separately in `market.json`.
+Transactional snapshot design. A scheduled job checks the sources hourly. Failed jobs retry after five minutes, with at most three starts per thirty minutes. It replaces `data.json` only after complete validation; `status.json` describes every attempt and optional Massive data is kept separately in `market.json`.
 
 ```
-  systemd timer (4 times per day)
+  systemd timer (hourly, bounded recovery on failure)
         |
         v
   build_snapshot.py  --(HTTPS)-->  CFTC Legacy/TFF + ECB Data API + FRED
@@ -74,6 +74,13 @@ Transactional snapshot design. A scheduled job checks the sources several times 
 ```
 
 If a required source is down, `data.json` does not change. The page keeps the last fully healthy snapshot and shows the failed attempt from `status.json`. If observations are unchanged, `data.json` remains byte-for-byte stable.
+
+FRED uses the official JSON API when configured, then a single official CSV for
+both target-range bounds. Schema and numeric checks reject HTML responses, empty
+exports, duplicate dates, non-finite values, unsynchronised latest bounds, stale
+data and inconsistent ranges. Transport and invalid-CSV retries share three
+attempts within the existing 90-second collection budget; no stale or synthetic
+rate is substituted.
 
 ### Note on the CFTC data
 

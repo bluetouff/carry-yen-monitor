@@ -37,6 +37,8 @@ Apache 443 --> application statique + data.json + status.json + market.json opti
 - La grâce CFTC tolère l'ancien rapport pendant 90 minutes après l'heure officielle de publication, tout en acceptant immédiatement le nouveau. Elle n'autorise aucun rapport avant sa publication prévue.
 - Le taux, la date, l'URL et l'empreinte SHA-256 du PDF BoJ n'existent que dans `config/boj-policy.json`. Le builder, le validateur et l'activation lisent ce même contrat.
 - Une décision annoncée peut prendre effet plusieurs jours plus tard. Le contrat BoJ v2 conserve `previous_rate` et `effective_from`, en plus du taux annoncé `rate` et de la date de décision `data_as_of`. Le builder utilise le taux en vigueur à la date japonaise du contrôle. La bascule produit un nouveau snapshot même si les séries de marché sont inchangées; le validateur refuse l'ancien taux après la date d'effet.
+- Collecte horaire à `:15`, étalée sur deux minutes. Un échec du service est rejoué après cinq minutes, avec au plus trois démarrages sur trente minutes; le créneau horaire suivant permet une nouvelle récupération après épuisement de cette limite. Un contrôle sain reste obligatoire avant toute publication et avant le réaffichage du score par l0g.
+- L'activation valide les deux unités systemd avant modification. Elle arrête aussi le service pour annuler une éventuelle reprise en attente, puis remet à zéro la limite d'échecs pour le nouveau code. Le rollback fait de même avant de restaurer l'ancien ensemble.
 
 ## 2. Préflight local
 
@@ -155,7 +157,7 @@ Depuis le checkout exact:
 python3 verify_live.py --base-url https://yct.l0g.fr/ --bundle-dir .
 ```
 
-Le vérificateur compare les quatre assets, dont `/en/index.html`, au bundle, contrôle CSP, HSTS et cache,
+Le vérificateur compare les huit assets (FR, EN, CSS, JS, favicons SVG/ICO, police et licence) au bundle, contrôle CSP, HSTS et cache,
 valide `data.json` contre les calendriers, puis recoupe `status.json`. Si Massive
 est déclaré frais, il valide aussi `market.json`.
 
@@ -217,6 +219,6 @@ recharger Apache.
 - BoJ: renouveler les fins de réunions puis, après chaque réunion même en cas de statu quo, mettre à jour uniquement `config/boj-policy.json`, y compris l'empreinte SHA-256 du PDF. L'index officiel bloque toute nouvelle décision non revue et le builder vérifie les octets du document.
 - Pour `boj-new-decision`, ouvrir la dernière décision depuis l'index officiel, vérifier le taux **et les notes de date d'effet**, puis mettre à jour le contrat v2. Ne jamais reporter automatiquement l'ancien taux ni appliquer immédiatement un taux futur. Après revue, générer le candidat réel avec la dernière donnée de production copiée dans le répertoire temporaire, valider, puis livrer l'artefact exact. `boj-source-hash` exige de revoir le document modifié; une erreur réseau exige de rétablir la collecte. Les échecs restent visibles dans `status.json` et dans les pastilles FR/EN.
 - BCE: TARGET2 est calculé, y compris Vendredi saint, lundi de Pâques, 1er mai, 25 et 26 décembre.
-- FRED: API JSON si une clé est présente, sinon CSV officiel; aucune valeur de repli n'est publiée en cas de panne.
+- FRED: API JSON si une clé est présente, puis CSV officiel commun à `DFEDTARL,DFEDTARU` si nécessaire. Un HTTP 200 n'est pas une validation : les colonnes, dates uniques ISO, valeurs finies et dernières dates communes sont contrôlées. Les réponses CSV vides ou de mauvais format et les erreurs réseau/HTTP transitoires partagent au plus trois requêtes CSV dans le budget global. Une borne périmée, future, désynchronisée ou une fourchette incohérente reste bloquante, sans valeur de repli fabriquée. `fred-schema` et `fred-empty` remplacent l'ancien diagnostic trompeur `fred-common-date` pour les réponses sans observations exploitables.
 - Massive: `MASSIVE_API_KEY` est optionnelle et exclusivement serveur. Une panne Massive ne bloque pas le snapshot BCE.
 - Alertes: `status.json` et l'état systemd sont la base d'un futur moniteur. Aucun service d'alerte externe n'est activé sans choix explicite de destination et de politique de confidentialité.

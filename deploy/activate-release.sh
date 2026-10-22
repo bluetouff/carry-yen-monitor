@@ -18,7 +18,7 @@ if [[ $(id -u) -ne 0 ]]; then
   exit 2
 fi
 
-for command_name in install cp mv awk cmp mktemp rmdir systemctl python3; do
+for command_name in install cp mv awk cmp mktemp rmdir systemctl systemd-analyze python3; do
   command -v "$command_name" >/dev/null || {
     echo "[yct-release] commande absente: $command_name" >&2
     exit 2
@@ -81,6 +81,8 @@ else
     --directory "$SOURCE_DIR" --expected-sha "$EXPECTED_SHA"
 fi
 
+systemd-analyze verify "$SOURCE_DIR/deploy/yct-snapshot.service" "$SOURCE_DIR/deploy/yct-snapshot.timer"
+
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 short_sha=${EXPECTED_SHA:0:12}
 BACKUP_DIR="/var/backups/yct/${timestamp}-${short_sha}"
@@ -139,6 +141,7 @@ rollback() {
   set +e
   echo "[yct-release] echec, restauration depuis $BACKUP_DIR" >&2
   systemctl stop yct-snapshot.timer
+  systemctl stop yct-snapshot.service
   install -o root -g root -m 0755 "$BACKUP_DIR/build_snapshot.py" /opt/yct/build_snapshot.py
   install -o root -g root -m 0600 "$BACKUP_DIR/env" /etc/yct/env
   install -o root -g root -m 0644 "$BACKUP_DIR/yct-snapshot.service" /etc/systemd/system/yct-snapshot.service
@@ -172,6 +175,7 @@ rollback() {
   [[ -z "$ENV_TMP" ]] || rm -f "$ENV_TMP"
   [[ -z "$SHA_TMP" ]] || rm -f "$SHA_TMP"
   systemctl daemon-reload
+  systemctl reset-failed yct-snapshot.service
   systemctl start yct-snapshot.service
   systemctl start yct-snapshot.timer
   /usr/sbin/apache2ctl configtest && systemctl reload apache2
@@ -181,6 +185,7 @@ rollback() {
 trap rollback ERR
 
 systemctl stop yct-snapshot.timer
+systemctl stop yct-snapshot.service
 
 # Migration unique vers le contrat BoJ versionne. Les anciennes variables
 # publiques sont retirees sans afficher ni modifier les secrets et options.
@@ -208,6 +213,7 @@ rm -f "$SHA_TMP"
 SHA_TMP=""
 
 systemctl daemon-reload
+systemctl reset-failed yct-snapshot.service
 systemctl start yct-snapshot.service
 /usr/bin/python3 /opt/yct/verify_snapshot.py /var/lib/yct/data.json \
   --status-path /var/lib/yct/status.json \

@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 from yct_quality import (
@@ -65,6 +65,7 @@ CFTC_TFF_URL = PRIMARY_SOURCE_URLS["tff"]
 ECB_API_URL = PRIMARY_SOURCE_URLS["fx"]
 FRED_API_URL = PRIMARY_SOURCE_URLS["fed_api"]
 FRED_CSV_URL = PRIMARY_SOURCE_URLS["fed_csv"]
+FED_SERIES = ("DFEDTARL", "DFEDTARU")
 MASSIVE_QUOTE_URL = "https://api.massive.com/v1/last_quote/currencies/USD/JPY"
 MASSIVE_DOC_URL = "https://massive.com/docs/rest/forex/quotes/last-quote"
 BOJ_SCHEDULE_URL = PRIMARY_SOURCE_URLS["boj_schedule"]
@@ -74,9 +75,10 @@ BOJ_STATEMENTS_URL_TEMPLATE = "https://www.boj.or.jp/en/mopo/mpmdeci/state_%d/in
 class SourceError(RuntimeError):
     """Erreur reseau ou schema avec un code public sans secret."""
 
-    def __init__(self, code, message):
+    def __init__(self, code, message, retry_after=None):
         super().__init__(message)
         self.code = code
+        self.retry_after = retry_after
 
 
 def log(message):
@@ -156,7 +158,10 @@ class HttpClient:
                 self.last_http_status = exc.code
                 code = "http-%d" % exc.code
                 if exc.code not in self.RETRYABLE_STATUS or attempt == attempts:
-                    raise SourceError(code, "%s : HTTP %d" % (host, exc.code)) from exc
+                    raise SourceError(
+                        code, "%s : HTTP %d" % (host, exc.code),
+                        retry_after=exc.headers.get("Retry-After") if exc.headers else None,
+                    ) from exc
                 log("retry %d/%d sur %s apres HTTP %d" % (attempt, attempts, host, exc.code))
                 self._pause(attempt, exc.headers.get("Retry-After") if exc.headers else None)
             except SourceError:
@@ -181,9 +186,9 @@ def http_get_json(url, headers=None, client=None):
         raise SourceError("json", "reponse JSON invalide") from exc
 
 
-def http_get_text(url, headers=None, client=None):
+def http_get_text(url, headers=None, client=None, attempts=REQUEST_ATTEMPTS):
     try:
-        return http_get(url, headers=headers, client=client).decode("utf-8-sig")
+        return http_get(url, headers=headers, client=client, attempts=attempts).decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise SourceError("encoding", "encodage source invalide") from exc
 
@@ -307,6 +312,28 @@ def fetch_fx(client=None, now=None, calendar=None):  # calendar garde une signat
     return rows, max_change
 
 
+def _fred_date(value):
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise QualityError("fred-date", "FRED : date non ISO")
+    try:
+        date.fromisoformat(value)
+    except ValueError as exc:
+        raise QualityError("fred-date", "FRED : date invalide") from exc
+    return value
+
+
+def _fred_number(value):
+    if isinstance(value, bool):
+        raise QualityError("fred-value", "FRED : valeur booleenne refusee")
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise QualityError("fred-value", "FRED : valeur invalide") from exc
+    if not math.isfinite(number):
+        raise QualityError("fred-value", "FRED : valeur non finie")
+    return number
+
+
 def fred_api_observations(series_id, client):
     params = {
         "series_id": series_id,
@@ -320,40 +347,79 @@ def fred_api_observations(series_id, client):
     if not isinstance(observations, list):
         raise QualityError("fred-schema", "FRED : observations absentes")
     values = {}
+    seen = set()
     for item in observations:
+        if not isinstance(item, dict):
+            raise QualityError("fred-schema", "FRED : observation non objet")
         value = item.get("value")
-        report_date = str(item.get("date") or "")[:10]
+        report_date = _fred_date(item.get("date"))
+        if report_date in seen:
+            raise QualityError("fred-duplicate-date", "FRED : date dupliquee")
+        seen.add(report_date)
         if value not in (".", None, ""):
-            try:
-                values[report_date] = float(value)
-            except (TypeError, ValueError) as exc:
-                raise QualityError("fred-value", "FRED : valeur invalide") from exc
+            values[report_date] = _fred_number(value)
+    if not values:
+        raise QualityError("fred-empty", "FRED : aucune observation exploitable")
     return values
 
 
-def fred_csv_observations(series_id, client):
-    url = FRED_CSV_URL + "?" + urllib.parse.urlencode({"id": series_id})
-    reader = csv.DictReader(io.StringIO(http_get_text(url, client=client)))
-    values = {}
-    for item in reader:
-        value = item.get(series_id)
-        report_date = item.get("observation_date") or item.get("DATE")
-        if value not in (".", None, "") and report_date:
-            try:
-                values[str(report_date)[:10]] = float(value)
-            except (TypeError, ValueError) as exc:
-                raise QualityError("fred-value", "FRED : valeur invalide") from exc
-    return values
+def parse_fred_csv(document, now):
+    try:
+        reader = csv.DictReader(io.StringIO(document), strict=True)
+        fields = reader.fieldnames or []
+        date_field = "observation_date" if "observation_date" in fields else "DATE"
+        if len(fields) != 3 or set(fields) != {date_field, *FED_SERIES}:
+            raise QualityError("fred-schema", "FRED : colonnes CSV inattendues")
+        values = {series_id: {} for series_id in FED_SERIES}
+        seen = set()
+        for item in reader:
+            if None in item or any(value is None for value in item.values()):
+                raise QualityError("fred-schema", "FRED : ligne CSV incomplete")
+            report_date = _fred_date(item[date_field])
+            if report_date in seen:
+                raise QualityError("fred-duplicate-date", "FRED : date dupliquee")
+            seen.add(report_date)
+            for series_id in FED_SERIES:
+                value = item[series_id]
+                if value not in (".", ""):
+                    values[series_id][report_date] = _fred_number(value)
+    except csv.Error as exc:
+        raise QualityError("fred-schema", "FRED : CSV mal forme ou tronque") from exc
+    return latest_common_rate(*(values[series_id] for series_id in FED_SERIES), now=now)
+
+
+def fred_csv_rate(client, now):
+    # Une seule reponse fournit les deux bornes. Les erreurs HTTP et de schema
+    # partagent trois essais, sans multiplier les retries ni le budget global.
+    url = FRED_CSV_URL + "?" + urllib.parse.urlencode({"id": ",".join(FED_SERIES)})
+    retryable = {"network", "fred-schema", "fred-empty"} | {
+        "http-%d" % status for status in HttpClient.RETRYABLE_STATUS
+    }
+    for attempt in range(1, REQUEST_ATTEMPTS + 1):
+        try:
+            document = http_get_text(url, client=client, attempts=1)
+            return parse_fred_csv(document, now)
+        except (SourceError, QualityError) as exc:
+            if _error_code(exc) not in retryable or attempt == REQUEST_ATTEMPTS:
+                raise
+            log("FRED CSV retry %d/%d apres %s" % (attempt, REQUEST_ATTEMPTS, _error_code(exc)))
+            client._pause(attempt, retry_after=getattr(exc, "retry_after", None))
+    raise SourceError("fred-empty", "FRED : export CSV indisponible")
 
 
 def latest_common_rate(lower_values, upper_values, now=None):
     now = now or utc_now()
+    if not lower_values or not upper_values:
+        raise QualityError("fred-empty", "FRED : aucune observation exploitable")
+    if max(lower_values) != max(upper_values):
+        raise QualityError("fred-unpaired", "FRED : dernieres bornes non synchronisees")
     common = sorted(set(lower_values).intersection(upper_values))
     if not common:
         raise QualityError("fred-common-date", "FRED : aucune date commune")
     report_date = common[-1]
-    lower = float(lower_values[report_date])
-    upper = float(upper_values[report_date])
+    _fred_date(report_date)
+    lower = _fred_number(lower_values[report_date])
+    upper = _fred_number(upper_values[report_date])
     width = upper - lower
     if not all(math.isfinite(value) for value in (lower, upper)) or lower > upper or width > 1:
         raise QualityError("fred-range", "FRED : fourchette incoherente")
@@ -380,11 +446,7 @@ def fetch_fed_rate(client=None, now=None, calendar=None):
             return result + ("fred-api",)
         except Exception as exc:  # noqa: BLE001
             log("FRED API indisponible (%s), essai CSV" % _error_code(exc))
-    result = latest_common_rate(
-        fred_csv_observations("DFEDTARL", client),
-        fred_csv_observations("DFEDTARU", client),
-        now=now,
-    )
+    result = fred_csv_rate(client, now)
     log("FRED CSV ok : cible [%.3f ; %.3f], milieu %.3f au %s" % (
         result[1], result[2], result[0], result[3]
     ))

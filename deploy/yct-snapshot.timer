@@ -2,13 +2,13 @@
 Description=YCT - declenche la regeneration du snapshot Carry Yen
 
 [Timer]
-# Quatre passages suffisent. La fraicheur est ensuite validee par rapport aux
-# calendriers officiels CFTC, TARGET/BCE et BoJ, pas par un age generique.
-OnCalendar=*-*-* 06,12,18,23:15
+# Controle horaire; les echecs transitoires ont aussi des reprises bornees dans
+# le service. Les calendriers de source restent les seuls criteres de fraicheur.
+OnCalendar=*-*-* *:15
 # Une passe peu apres le boot pour ne pas attendre le prochain creneau.
 OnBootSec=3min
 # Etale le declenchement pour ne pas taper les API a la seconde pile.
-RandomizedDelaySec=300
+RandomizedDelaySec=120
 # Rattrape un creneau manque (serveur eteint, etc.).
 Persistent=true
 

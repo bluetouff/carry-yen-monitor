@@ -109,7 +109,7 @@ def run_paths(directory):
     }
 
 
-def run_successfully(paths, now=FIXED_NOW, cot=None, boj_error=None):
+def run_successfully(paths, now=FIXED_NOW, cot=None, boj_error=None, fed_error=None):
     cot = cot or position_rows("legacy")
     with mock.patch.object(build_snapshot, "OUT_PATH", paths["OUT_PATH"]), mock.patch.dict(
         os.environ, paths, clear=False
@@ -118,7 +118,8 @@ def run_successfully(paths, now=FIXED_NOW, cot=None, boj_error=None):
     ), mock.patch.object(
         build_snapshot, "fetch_fx", return_value=(fx_rows(), 0.2)
     ), mock.patch.object(
-        build_snapshot, "fetch_fed_rate", return_value=(3.625, 3.5, 3.75, "2026-07-31", "fred-csv")
+        build_snapshot, "fetch_fed_rate", side_effect=fed_error,
+        return_value=(3.625, 3.5, 3.75, "2026-07-31", "fred-csv")
     ), mock.patch.object(
         build_snapshot, "fetch_boj_index", side_effect=boj_error, return_value={
             "latest_statement_date": "2026-07-31",
@@ -314,6 +315,178 @@ class SourceTests(unittest.TestCase):
                 build_snapshot.fetch_boj_index(policy=BOJ_POLICY)
 
 
+class FedSourceTests(unittest.TestCase):
+    CSV = "observation_date,DFEDTARL,DFEDTARU\n2026-07-31,3.50,3.75\n"
+
+    @staticmethod
+    def response(document):
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        response.geturl.return_value = build_snapshot.FRED_CSV_URL
+        response.status = 200
+        response.read.return_value = document.encode("utf-8")
+        return response
+
+    def client(self):
+        return build_snapshot.HttpClient(
+            deadline=time.monotonic() + 10, sleep=mock.Mock(), rng=mock.Mock(random=lambda: 0)
+        )
+
+    def test_combined_csv_fetches_both_bounds_once(self):
+        client = self.client()
+        with mock.patch("urllib.request.urlopen", return_value=self.response(self.CSV)) as request:
+            result = build_snapshot.fred_csv_rate(client, FIXED_NOW)
+        self.assertEqual(result, (3.625, 3.5, 3.75, "2026-07-31"))
+        self.assertEqual(client.attempts, 1)
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(request.call_args.args[0].full_url).query)
+        self.assertEqual(query["id"], ["DFEDTARL,DFEDTARU"])
+
+    def test_html_200_is_retried_then_replaced_only_by_valid_csv(self):
+        client = self.client()
+        with mock.patch("urllib.request.urlopen", side_effect=[
+            self.response("<html>temporary error</html>"), self.response(self.CSV)
+        ]):
+            result = build_snapshot.fred_csv_rate(client, FIXED_NOW)
+        self.assertEqual(result[0], 3.625)
+        self.assertEqual(client.attempts, 2)
+        client.sleep.assert_called_once()
+
+    def test_repeated_html_200_fails_with_schema_after_three_attempts_without_body_leak(self):
+        client = self.client()
+        output = io.StringIO()
+        with mock.patch("urllib.request.urlopen", return_value=self.response("<html>private-response</html>")), \
+                mock.patch("sys.stderr", output):
+            with self.assertRaises(yct_quality.QualityError) as caught:
+                build_snapshot.fred_csv_rate(client, FIXED_NOW)
+        self.assertEqual(caught.exception.code, "fred-schema")
+        self.assertEqual(client.attempts, 3)
+        self.assertEqual(client.sleep.call_count, 2)
+        self.assertNotIn("private-response", output.getvalue())
+
+    def test_empty_csv_is_retried_but_never_becomes_zero(self):
+        client = self.client()
+        with mock.patch("urllib.request.urlopen", return_value=self.response("observation_date,DFEDTARL,DFEDTARU\n")):
+            with self.assertRaises(yct_quality.QualityError) as caught:
+                build_snapshot.fred_csv_rate(client, FIXED_NOW)
+        self.assertEqual(caught.exception.code, "fred-empty")
+        self.assertEqual(client.attempts, 3)
+
+    def test_http_failures_share_the_same_three_attempt_limit(self):
+        client = self.client()
+        error = urllib.error.HTTPError(build_snapshot.FRED_CSV_URL, 503, "down", {}, io.BytesIO())
+        with mock.patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(build_snapshot.SourceError) as caught:
+                build_snapshot.fred_csv_rate(client, FIXED_NOW)
+        error.close()
+        self.assertEqual(caught.exception.code, "http-503")
+        self.assertEqual(client.attempts, 3)
+        self.assertEqual(client.sleep.call_count, 2)
+
+    def test_http_404_is_not_semantically_retried(self):
+        client = self.client()
+        error = urllib.error.HTTPError(build_snapshot.FRED_CSV_URL, 404, "missing", {}, io.BytesIO())
+        with mock.patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(build_snapshot.SourceError):
+                build_snapshot.fred_csv_rate(client, FIXED_NOW)
+        error.close()
+        self.assertEqual(client.attempts, 1)
+        client.sleep.assert_not_called()
+
+    def test_rate_limit_retry_after_is_preserved_with_three_requests_maximum(self):
+        client = self.client()
+        error = urllib.error.HTTPError(
+            build_snapshot.FRED_CSV_URL, 429, "limited", {"Retry-After": "8"}, io.BytesIO()
+        )
+        with mock.patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaises(build_snapshot.SourceError):
+                build_snapshot.fred_csv_rate(client, FIXED_NOW)
+        error.close()
+        self.assertEqual(client.attempts, 3)
+        self.assertEqual(client.sleep.call_args_list, [mock.call(8.0), mock.call(8.0)])
+
+    def test_expired_deadline_never_starts_a_request(self):
+        client = self.client()
+        client.deadline = time.monotonic() - 1
+        with mock.patch("urllib.request.urlopen") as request:
+            with self.assertRaises(build_snapshot.SourceError) as caught:
+                build_snapshot.fred_csv_rate(client, FIXED_NOW)
+        self.assertEqual(caught.exception.code, "deadline")
+        request.assert_not_called()
+
+    def test_deadline_expiring_during_backoff_stops_next_attempt(self):
+        client = self.client()
+        client.sleep.side_effect = lambda delay: setattr(client, "deadline", time.monotonic() - 1)
+        with mock.patch("urllib.request.urlopen", return_value=self.response("<html>temporary error</html>")):
+            with self.assertRaises(build_snapshot.SourceError) as caught:
+                build_snapshot.fred_csv_rate(client, FIXED_NOW)
+        self.assertEqual(caught.exception.code, "deadline")
+        self.assertEqual(client.attempts, 1)
+
+    def test_csv_rejects_bad_schema_dates_duplicates_and_nonfinite_values(self):
+        fixtures = (
+            ("observation_date,DFEDTARL\n2026-07-31,3.5\n", "fred-schema"),
+            ("observation_date,DFEDTARL,DFEDTARU\n2026-07-31,3.5\n", "fred-schema"),
+            ("observation_date,DFEDTARL,DFEDTARU\n2026-07-31,3.5,3.75,extra\n", "fred-schema"),
+            ('observation_date,DFEDTARL,DFEDTARU\n2026-07-31,3.50,"3.75\n', "fred-schema"),
+            (self.CSV.replace("2026-07-31", "2026-02-30"), "fred-date"),
+            (self.CSV.replace("2026-07-31", "20260731"), "fred-date"),
+            (self.CSV + "2026-07-31,3.5,3.75\n", "fred-duplicate-date"),
+            (self.CSV.replace("3.50", "NaN"), "fred-value"),
+            (self.CSV.replace("3.75", "inf"), "fred-value"),
+        )
+        for document, code in fixtures:
+            with self.subTest(code=code, document=document):
+                with self.assertRaises(yct_quality.QualityError) as caught:
+                    build_snapshot.parse_fred_csv(document, FIXED_NOW)
+                self.assertEqual(caught.exception.code, code)
+
+    def test_missing_history_remains_missing_and_legacy_date_header_is_supported(self):
+        document = self.CSV.replace("observation_date", "DATE").replace(
+            "2026-07-31", "2026-07-29,.,\n2026-07-30,3.50,.\n2026-07-31"
+        )
+        self.assertEqual(build_snapshot.parse_fred_csv(document, FIXED_NOW),
+                         (3.625, 3.5, 3.75, "2026-07-31"))
+
+    def test_latest_pair_must_be_complete_recent_not_future_and_consistent(self):
+        for document, code in (
+            (self.CSV + "2026-08-01,3.50,.\n", "fred-unpaired"),
+            (self.CSV.replace("2026-07-31", "2026-07-20"), "fred-stale"),
+            (self.CSV.replace("2026-07-31", "2026-08-03"), "fred-stale"),
+            (self.CSV.replace("3.50,3.75", "4.00,3.75"), "fred-range"),
+            (self.CSV.replace("3.50,3.75", "1.00,3.75"), "fred-range"),
+        ):
+            with self.subTest(code=code):
+                client = self.client()
+                with mock.patch("urllib.request.urlopen", return_value=self.response(document)):
+                    with self.assertRaises(yct_quality.QualityError) as caught:
+                        build_snapshot.fred_csv_rate(client, FIXED_NOW)
+                self.assertEqual(caught.exception.code, code)
+                self.assertEqual(client.attempts, 1)
+
+    def test_api_rejects_malformed_observations_without_leaking_values(self):
+        fixtures = (
+            {"observations": ["not-an-object"]},
+            {"observations": [{"date": "2026-07-31", "value": "NaN"}]},
+            {"observations": [{"date": "2026-07-31", "value": True}]},
+            {"observations": [{"date": "bad-date", "value": "3.5"}]},
+            {"observations": [{"date": "2026-07-31", "value": "3.5"}] * 2},
+            {"observations": []},
+        )
+        for payload in fixtures:
+            with self.subTest(payload=payload), mock.patch.object(build_snapshot, "http_get_json", return_value=payload):
+                with self.assertRaises(yct_quality.QualityError):
+                    build_snapshot.fred_api_observations("DFEDTARL", self.client())
+
+    def test_api_failure_falls_back_to_valid_official_combined_csv_without_key_leak(self):
+        output = io.StringIO()
+        with mock.patch.object(build_snapshot, "FRED_API_KEY", "test-only-fred-key"), \
+                mock.patch.object(build_snapshot, "http_get_json", side_effect=build_snapshot.SourceError("http-400", "FRED API failed")), \
+                mock.patch("urllib.request.urlopen", return_value=self.response(self.CSV)), mock.patch("sys.stderr", output):
+            result = build_snapshot.fetch_fed_rate(client=self.client(), now=FIXED_NOW)
+        self.assertEqual(result, (3.625, 3.5, 3.75, "2026-07-31", "fred-csv"))
+        self.assertNotIn("test-only-fred-key", output.getvalue())
+
+
 class HttpClientTests(unittest.TestCase):
     class Response:
         status = 200
@@ -349,6 +522,20 @@ class HttpClientTests(unittest.TestCase):
 
 
 class TransactionTests(unittest.TestCase):
+    def test_failed_fred_schema_preserves_snapshot_and_reports_precise_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = run_paths(directory)
+            self.assertEqual(run_successfully(paths), 0)
+            body = Path(paths["OUT_PATH"]).read_bytes()
+            self.assertEqual(run_successfully(paths, fed_error=yct_quality.QualityError(
+                "fred-schema", "FRED : colonnes CSV inattendues"
+            )), 1)
+            self.assertEqual(body, Path(paths["OUT_PATH"]).read_bytes())
+            status = json.loads(Path(paths["STATUS_PATH"]).read_text())
+        self.assertEqual(status["status"], "degraded")
+        self.assertEqual(status["sources"]["fed"]["error_code"], "fred-schema")
+        self.assertFalse(status["published"])
+
     def test_effective_date_promotes_new_rate_even_when_market_data_is_unchanged(self):
         before = datetime(2026, 8, 2, 14, 59, 59, tzinfo=timezone.utc)
         after = before + timedelta(seconds=1)
@@ -608,6 +795,15 @@ class ContractTests(unittest.TestCase):
         self.assertIn("source-calendars.json", activation)
         self.assertIn("boj-policy.json", activation)
         self.assertIn("yct-snapshot.timer", activation)
+        self.assertIn("systemd-analyze verify", activation)
+        self.assertIn("systemctl stop yct-snapshot.service", activation)
+        self.assertIn("systemctl reset-failed yct-snapshot.service", activation)
+        self.assertIn("Restart=on-failure", service)
+        self.assertIn("RestartSec=5min", service)
+        self.assertIn("StartLimitIntervalSec=30min", service)
+        self.assertIn("StartLimitBurst=3", service)
+        timer = (ROOT / "deploy" / "yct-snapshot.timer").read_text(encoding="utf-8")
+        self.assertIn("OnCalendar=*-*-* *:15", timer)
         self.assertIn("apache2ctl configtest", activation)
         self.assertIn("web/en/index.html", activation)
         self.assertIn("/var/www/html/yct/en", activation)

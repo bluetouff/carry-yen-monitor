@@ -54,10 +54,10 @@ Le tableau de bord a été pensé pour être sobre et respectueux:
 
 ## Architecture, pour les techniciens
 
-Conception transactionnelle. Un job contrôle les sources plusieurs fois par jour. Il ne remplace `data.json` qu'après validation complète; `status.json` décrit chaque tentative et `market.json` reçoit, si elle est configurée, une cotation Massive séparée.
+Conception transactionnelle. Un job contrôle les sources chaque heure. Un échec entraîne une reprise après cinq minutes, avec au plus trois démarrages sur trente minutes. Il ne remplace `data.json` qu'après validation complète; `status.json` décrit chaque tentative et `market.json` reçoit, si elle est configurée, une cotation Massive séparée.
 
 ```
-  timer systemd (4 fois par jour)
+  timer systemd (horaire, reprises bornees apres echec)
         |
         v
   build_snapshot.py  --(HTTPS)-->  CFTC Legacy/TFF + API Data BCE + FRED
@@ -74,6 +74,13 @@ Conception transactionnelle. Un job contrôle les sources plusieurs fois par jou
 ```
 
 Si une source requise tombe, `data.json` ne change pas. La page conserve le dernier snapshot intégralement sain et montre l'échec du dernier contrôle à partir de `status.json`. Si les observations sont identiques, `data.json` reste identique octet pour octet.
+
+FRED utilise l'API JSON officielle si elle est configurée, puis un export CSV
+officiel commun aux deux bornes de cible. Les contrôles refusent les réponses
+HTML, exports vides, dates dupliquées, valeurs non finies, dernières bornes non
+synchronisées, données périmées et fourchettes incohérentes. Erreurs de transport
+et de format CSV partagent trois essais dans le budget de collecte de 90 secondes;
+aucun taux périmé ou synthétique n'est substitué.
 
 ### Précision sur la donnée CFTC
 
