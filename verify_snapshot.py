@@ -15,6 +15,7 @@ from yct_quality import (
     boj_config_state,
     boj_rate_at,
     content_sha256,
+    confirmed_boj_policy,
     load_boj_policy,
     load_calendar,
     methodology_contract,
@@ -91,6 +92,25 @@ def validate(
     if not isinstance(sources, dict):
         errors.append("sources doit etre un objet")
         sources = {}
+    boj_meta = sources.get("boj", {})
+    if isinstance(boj_meta, dict):
+        confirmation = boj_meta.get("policy_confirmation")
+        if confirmation is not None:
+            try:
+                require(boj_meta.get("verification_mode") == "official-guideline-confirmed",
+                        "mode de confirmation BoJ incoherent", errors)
+                require(boj_meta.get("reviewed_policy_as_of") == boj_policy["data_as_of"],
+                        "date de revue BoJ incoherente", errors)
+                boj_policy = confirmed_boj_policy(boj_policy, confirmation, now)
+                require(data.get("rates", {}).get("boj_source") == "official-guideline-confirmed",
+                        "source du taux BoJ incoherente", errors)
+            except Exception:  # noqa: BLE001
+                errors.append("confirmation primaire BoJ invalide")
+        else:
+            require(boj_meta.get("verification_mode", "reviewed-policy") == "reviewed-policy",
+                    "confirmation primaire BoJ absente", errors)
+            require(data.get("rates", {}).get("boj_source") == "verified-config",
+                    "source du taux BoJ sans preuve de confirmation", errors)
     for key in REQUIRED_SOURCES:
         meta = sources.get(key, {})
         if not isinstance(meta, dict) or not meta:
@@ -269,6 +289,11 @@ def validate_status(path, snapshot, max_checked_age_hours=8, now=None):
         expected = "verified-config" if key == "boj" else "fresh"
         require(source_status.get(key, {}).get("status") == expected,
                 "dernier controle %s en statut %s" % (key, source_status.get(key, {}).get("status")), errors)
+    boj_snapshot = snapshot.get("sources", {}).get("boj", {})
+    if boj_snapshot.get("verification_mode"):
+        for field in ("verification_mode", "data_as_of", "reviewed_policy_as_of"):
+            require(source_status.get("boj", {}).get(field) == boj_snapshot.get(field),
+                    "status et snapshot BoJ incoherents : %s" % field, errors)
     return errors, status
 
 

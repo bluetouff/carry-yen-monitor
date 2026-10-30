@@ -1,9 +1,7 @@
 {
-  "schema_version": 2,
+  "schema_version": 1,
   "rate": 1.25,
-  "previous_rate": 1.0,
-  "data_as_of": "2026-09-18",
-  "effective_from": "2026-09-24",
-  "source_url": "https://www.boj.or.jp/en/mopo/mpmdeci/mpr_2026/k260918a.pdf",
-  "source_sha256": "36d7aa63ff283e25dcc07bc1f6e0caaad8e6764d30cf22433b5c2dd0b6bda391"
+  "data_as_of": "2026-10-30",
+  "source_url": "https://www.boj.or.jp/en/mopo/mpmdeci/mpr_2026/k261030a.pdf",
+  "source_sha256": "f62859324bd87cc493b9bd2ec09b9030012602cfe66b7298543ad7cffc97a044"
 }

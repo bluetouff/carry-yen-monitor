@@ -133,7 +133,7 @@
       <p><b style="color:var(--text)">CFTC TFF</b> <a href="https://publicreporting.cftc.gov/resource/gpe5-46if.json" rel="noopener noreferrer">TFF Futures Only</a>. The "leveraged funds" series is displayed separately and is never combined with the Legacy category.</p>
       <p><b style="color:var(--text)">ECB</b> <a href="https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html" rel="noopener noreferrer">official reference rates</a>. USD/JPY equals JPY per EUR divided by USD per EUR. This daily information reference is not a real-time market quote.</p>
       <p><b style="color:var(--text)">Fed</b> target from the official FRED series <a href="https://fred.stlouisfed.org/series/DFEDTARL" rel="noopener noreferrer">DFEDTARL</a> and <a href="https://fred.stlouisfed.org/series/DFEDTARU" rel="noopener noreferrer">DFEDTARU</a>. The dashboard displays the midpoint of the range.</p>
-      <p><b style="color:var(--text)">BoJ</b> target configured with a date and verification URL based on <a href="https://www.boj.or.jp/en/mopo/mpmdeci/index.htm" rel="noopener noreferrer">official decisions</a>. An outdated configuration explicitly degrades the status.</p>
+      <p><b style="color:var(--text)">BoJ</b> target reviewed against <a href="https://www.boj.or.jp/en/mopo/mpmdeci/index.htm" rel="noopener noreferrer">official decisions</a>. An unchanged target can be confirmed automatically from the BoJ website's official guideline, cross-checked against the latest dated statement. Any rate change requires its effective date to be verified. The source badge identifies the verification mode.</p>
       <p><b style="color:var(--text)">Notional</b> net contracts multiplied by JPY 12,500,000 and converted with the ECB reference. This is the net notional of this CME future, not an estimate of the global carry trade. The score is a monitoring heuristic.</p>
       <p><b style="color:var(--text)">Optional market spot</b> a Massive quote may complement the ECB reference. It remains separate, timestamped and fetched server-side; its absence does not degrade the canonical snapshot.</p>
       <p><b style="color:var(--text)">Formula</b> version <code>1.0.0</code>. Weights remain unchanged and explicitly heuristic until a documented backtest validates a new calibration.</p>
@@ -152,6 +152,6 @@
   </footer>
 
 </div>
-<script src="../app.js?v=f07c1ad3b6f9"></script>
+<script src="../app.js?v=80cf76df005a"></script>
 </body>
 </html>

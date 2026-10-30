@@ -154,6 +154,48 @@ def boj_rate_at(policy, now):
     return policy["rate"]
 
 
+def confirmed_boj_policy(reviewed, confirmation, now):
+    """Confirm an unchanged reviewed target, never infer a new rate/effective date.
+
+    The collector cross-checks the current official HTML guideline and the dated
+    statement link. This is not a claim that the new PDF has been manually read.
+    """
+    try:
+        if not isinstance(confirmation, dict) or set(confirmation) != {
+            "mode", "rate", "data_as_of", "source_url", "source_sha256", "guideline_url",
+        }:
+            raise ValueError("shape")
+        if confirmation["mode"] != "official-guideline-confirmed":
+            raise ValueError("mode")
+        rate = confirmation["rate"]
+        if isinstance(rate, bool) or not isinstance(rate, (int, float)):
+            raise ValueError("rate")
+        if rate != reviewed["rate"] or rate != boj_rate_at(reviewed, now):
+            raise ValueError("changed or pending rate")
+        as_of = date.fromisoformat(confirmation["data_as_of"])
+        if as_of.isoformat() != confirmation["data_as_of"]:
+            raise ValueError("date")
+        today = now.astimezone(ZoneInfo("Asia/Tokyo")).date()
+        if not reviewed["data_as_of"] < as_of.isoformat() <= today.isoformat():
+            raise ValueError("date range")
+        expected_url = "https://www.boj.or.jp/en/mopo/mpmdeci/mpr_%d/k%sa.pdf" % (
+            as_of.year, as_of.strftime("%y%m%d"),
+        )
+        if confirmation["source_url"] != expected_url:
+            raise ValueError("statement URL")
+        if confirmation["guideline_url"] != "https://www.boj.or.jp/en/index.htm":
+            raise ValueError("guideline URL")
+        digest = confirmation["source_sha256"]
+        if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise ValueError("digest")
+    except (KeyError, TypeError, ValueError, QualityError) as exc:
+        raise QualityError("boj-confirmation", "confirmation primaire BoJ incoherente") from exc
+    return {
+        "schema_version": 1, "rate": float(rate), "data_as_of": as_of.isoformat(),
+        "source_url": expected_url, "source_sha256": digest,
+    }
+
+
 def methodology_contract():
     """Retourne une copie pour eviter qu'un consommateur modifie le contrat global."""
 
@@ -358,6 +400,7 @@ def snapshot_fingerprint(data):
     provenance_fields = (
         "status", "provider", "dataset", "data_as_of", "source_url", "schedule_url",
         "policy_index_url", "content_sha256", "revised_dates", "next_review_due",
+        "verification_mode", "reviewed_policy_as_of", "policy_confirmation",
     )
     sources = data.get("sources", {}) if isinstance(data.get("sources"), dict) else {}
     provenance = {

@@ -10,7 +10,6 @@ reference quotidienne BCE.
 
 import csv
 import hashlib
-import html
 import io
 import json
 import math
@@ -26,6 +25,8 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+from html.parser import HTMLParser
+from zoneinfo import ZoneInfo
 
 from yct_quality import (
     CFTC_CONTRACT_CODE,
@@ -34,6 +35,7 @@ from yct_quality import (
     boj_config_state,
     boj_rate_at,
     content_sha256,
+    confirmed_boj_policy,
     detect_revisions,
     iso_timestamp,
     load_boj_policy,
@@ -492,6 +494,144 @@ def fetch_massive_quote(client=None, now=None, calendar=None):
     }
 
 
+class _BojHTMLParser(HTMLParser):
+    """Read links and scoped policy/news evidence without interpreting HTML as code."""
+
+    VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.links = []
+        self.policies = []
+        self.news_items = []
+        self.stack = []
+
+    def _ancestor(self, key):
+        return next((frame[key] for frame in reversed(self.stack) if key in frame), None)
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag in {"a", "section", "time"} and len(attributes) != len(attrs):
+            raise QualityError("boj-index-schema", "BoJ : attribut HTML duplique")
+        frame = {"tag": tag}
+        if tag == "section" and "policy" in (attributes.get("class") or "").split():
+            frame["policy"] = {"headings": [], "links": [], "closed": False}
+            self.policies.append(frame["policy"])
+        if tag == "li":
+            frame["news"] = {"dates": [], "links": [], "closed": False}
+            self.news_items.append(frame["news"])
+        if tag == "time":
+            news = self._ancestor("news")
+            if news is not None:
+                news["dates"].append(attributes.get("datetime"))
+        if tag == "h3":
+            policy_section = self._ancestor("policy")
+            if policy_section is not None:
+                frame["heading"] = {"parts": [], "closed": False}
+                policy_section["headings"].append(frame["heading"])
+        if tag == "a":
+            if self._ancestor("anchor") is not None:
+                raise QualityError("boj-index-schema", "BoJ : liens HTML imbriques")
+            frame["anchor"] = {"href": attributes.get("href"), "parts": [], "closed": False}
+            self.links.append(frame["anchor"])
+            for key in ("policy", "news"):
+                ancestor = self._ancestor(key)
+                if ancestor is not None:
+                    ancestor["links"].append(frame["anchor"])
+        if tag not in self.VOID_TAGS:
+            self.stack.append(frame)
+
+    def handle_endtag(self, tag):
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index]["tag"] == tag:
+                for key in ("anchor", "heading", "policy", "news"):
+                    if key in self.stack[index]:
+                        self.stack[index][key]["closed"] = True
+                del self.stack[index:]
+                break
+
+    def handle_data(self, data):
+        if any(frame["tag"] in {"script", "style"} for frame in self.stack):
+            return
+        for key in ("anchor", "heading"):
+            node = self._ancestor(key)
+            if node is not None:
+                node["parts"].append(data)
+
+
+def _boj_text(node):
+    return " ".join("".join(node["parts"]).split())
+
+
+def _boj_statement_title(title):
+    return bool(re.fullmatch(
+        r"(?:Statement on Monetary Policy|Change in the Guideline for Money Market Operations)"
+        r"(?:\s*\[PDF(?:\s+[^\]]+)?\])?", title,
+    ))
+
+
+def _boj_statement_link(href, base_url):
+    if not isinstance(href, str) or not href:
+        raise QualityError("boj-source-url", "BoJ : lien de decision absent")
+    url = urllib.parse.urljoin(base_url, href)
+    parsed = urllib.parse.urlsplit(url)
+    match = re.fullmatch(
+        r"/en/mopo/mpmdeci/(?:mpr|state)_(\d{4})/k(\d{6})[a-z]?\.(?:pdf|htm)", parsed.path
+    )
+    if parsed.scheme != "https" or parsed.netloc != "www.boj.or.jp" or parsed.query or parsed.fragment or not match:
+        raise QualityError("boj-source-url", "BoJ : URL de decision non officielle ou inattendue")
+    try:
+        report_date = datetime.strptime(match[2], "%y%m%d").date()
+    except ValueError as exc:
+        raise QualityError("boj-date", "BoJ : date de decision invalide") from exc
+    if report_date.year != int(match[1]):
+        raise QualityError("boj-date", "BoJ : annee de decision incoherente")
+    return url, report_date.isoformat()
+
+
+def _boj_parse_html(document):
+    parser = _BojHTMLParser()
+    parser.feed(document)
+    parser.close()
+    return parser
+
+
+def _boj_confirm_current_guideline(document, latest, policy, now, index_url):
+    """Confirm an unchanged current target, never claim to have reviewed a new PDF."""
+    parser = _boj_parse_html(document)
+    if len(parser.policies) != 1:
+        raise QualityError("boj-new-decision", "nouvelle decision BoJ : bloc Guideline ambigu ou absent")
+    section = parser.policies[0]
+    if not section["closed"] or len(section["headings"]) != 1 or len(section["links"]) != 1:
+        raise QualityError("boj-new-decision", "nouvelle decision BoJ : structure Guideline inattendue")
+    heading, link = section["headings"][0], section["links"][0]
+    if not heading["closed"] or _boj_text(heading) != "Guideline" or not link["closed"]:
+        raise QualityError("boj-new-decision", "nouvelle decision BoJ : Guideline non confirmee")
+    if urllib.parse.urljoin("https://www.boj.or.jp/en/index.htm", link["href"] or "") != index_url:
+        raise QualityError("boj-new-decision", "nouvelle decision BoJ : index Guideline incoherent")
+    match = re.fullmatch(
+        r"The Bank will encourage the uncollateralized overnight call rate to remain at around "
+        r"(-?(?:0|[1-9]\d*)(?:\.\d+)?) percent\.", _boj_text(link),
+    )
+    if not match:
+        raise QualityError("boj-new-decision", "nouvelle decision BoJ : cible Guideline ambigue")
+    rate = float(match[1])
+    if not math.isfinite(rate) or rate != policy["rate"] or rate != boj_rate_at(policy, now):
+        raise QualityError("boj-new-decision", "nouvelle decision BoJ : variation de taux a examiner")
+    if policy.get("effective_from") and now.astimezone(ZoneInfo("Asia/Tokyo")).date().isoformat() < policy["effective_from"]:
+        raise QualityError("boj-new-decision", "nouvelle decision BoJ : transition de taux encore en attente")
+    dated_links = []
+    for item in parser.news_items:
+        if any(urllib.parse.urljoin("https://www.boj.or.jp/en/index.htm", entry["href"] or "") == latest["url"]
+               for entry in item["links"]):
+            if not item["closed"] or item["dates"] != [latest["d"]] or any(not entry["closed"] for entry in item["links"]):
+                raise QualityError("boj-new-decision", "nouvelle decision BoJ : date de publication non confirmee")
+            dated_links.append(item)
+    if not dated_links:
+        raise QualityError("boj-new-decision", "nouvelle decision BoJ : page Guideline anterieure a la publication")
+    return rate
+
+
 def fetch_boj_index(client=None, now=None, calendar=None, policy=None):
     del calendar
     client = client or HttpClient()
@@ -503,42 +643,68 @@ def fetch_boj_index(client=None, now=None, calendar=None, policy=None):
         year = int(policy_as_of[:4])
     except (TypeError, ValueError) as exc:
         raise QualityError("boj-date", "date de configuration BoJ invalide") from exc
+    local_today = now.astimezone(ZoneInfo("Asia/Tokyo")).date()
+    if policy_as_of > local_today.isoformat():
+        raise QualityError("boj-future-decision", "decision BoJ encore future")
+    configured_url, configured_date = _boj_statement_link(policy_source_url, policy_source_url)
+    if configured_date != policy_as_of:
+        raise QualityError("boj-date", "BoJ : date de configuration et URL incoherentes")
     statements = []
-    index_urls = [BOJ_STATEMENTS_URL_TEMPLATE % current_year for current_year in sorted({year, now.year})]
-    pattern = re.compile(
-        r'<a\s+[^>]*href="([^"]*k(\d{6})[^"]*)"[^>]*>(.*?)</a>',
-        flags=re.IGNORECASE | re.DOTALL,
-    )
+    index_urls = [BOJ_STATEMENTS_URL_TEMPLATE % current_year for current_year in sorted({year, local_today.year})]
     for index_url in index_urls:
-        document = http_get_text(index_url, client=client)
-        for href, compact_date, raw_title in pattern.findall(document):
-            title = re.sub(r"<[^>]+>", " ", html.unescape(raw_title))
-            title = " ".join(title.split())
-            if title.startswith("Statement on Monetary Policy") or title.startswith("Change in the Guideline for Money Market Operations"):
-                report_date = datetime.strptime(compact_date, "%y%m%d").date().isoformat()
-                statements.append({"d": report_date, "url": urllib.parse.urljoin(index_url, href), "title": title})
+        parser = _boj_parse_html(http_get_text(index_url, client=client))
+        for link in parser.links:
+            title = _boj_text(link)
+            if _boj_statement_title(title):
+                if not link["closed"]:
+                    raise QualityError("boj-index-schema", "BoJ : lien de decision incomplet")
+                url, report_date = _boj_statement_link(link["href"], index_url)
+                if report_date > local_today.isoformat():
+                    raise QualityError("boj-future-decision", "decision BoJ encore future")
+                statements.append({"d": report_date, "url": url, "title": title})
     if not statements:
         raise QualityError("boj-index-schema", "index des decisions BoJ illisible")
     statements.sort(key=lambda item: (item["d"], item["url"]))
     latest_date = statements[-1]["d"]
     configured_urls = {item["url"] for item in statements if item["d"] == policy_as_of}
-    if latest_date != policy_as_of:
-        raise QualityError("boj-new-decision", "nouvelle decision BoJ a examiner")
-    if policy_source_url not in configured_urls:
+    if configured_url not in configured_urls:
         raise QualityError("boj-source-url", "URL de decision BoJ non retrouvee dans l'index")
-    statement = http_get(policy_source_url, client=client)
+    latest_urls = {item["url"] for item in statements if item["d"] == latest_date}
+    if len(latest_urls) != 1:
+        raise QualityError("boj-index-schema", "BoJ : plusieurs decisions concurrentes")
+    latest = statements[-1]
+    confirmation_rate = None
+    if latest_date != policy_as_of:
+        canonical_url = "https://www.boj.or.jp/en/mopo/mpmdeci/mpr_%s/k%sa.pdf" % (
+            latest_date[:4], latest_date[2:].replace("-", ""),
+        )
+        if latest_date < policy_as_of or latest["url"] != canonical_url:
+            raise QualityError("boj-new-decision", "nouvelle decision BoJ a examiner")
+        confirmation_rate = _boj_confirm_current_guideline(
+            http_get_text("https://www.boj.or.jp/en/index.htm", client=client), latest, policy, now,
+            BOJ_STATEMENTS_URL_TEMPLATE % int(latest_date[:4]),
+        )
+    statement = http_get(latest["url"], client=client)
     raw_statement_sha256 = hashlib.sha256(statement).hexdigest()
     if not statement.startswith(b"%PDF-"):
         raise QualityError("boj-source-format", "decision BoJ non PDF")
-    if raw_statement_sha256 != policy["source_sha256"]:
+    if confirmation_rate is None and raw_statement_sha256 != policy["source_sha256"]:
         raise QualityError("boj-source-hash", "empreinte de la decision BoJ inattendue")
-    return {
+    result = {
         "latest_statement_date": latest_date,
         "index_url": index_urls[-1],
         "index_urls": index_urls,
-        "statement_url": policy_source_url,
+        "statement_url": latest["url"],
         "statement_sha256": raw_statement_sha256,
     }
+    if confirmation_rate is not None:
+        result["confirmation"] = {
+            "mode": "official-guideline-confirmed", "rate": confirmation_rate,
+            "data_as_of": latest_date, "source_url": latest["url"],
+            "source_sha256": raw_statement_sha256,
+            "guideline_url": "https://www.boj.or.jp/en/index.htm",
+        }
+    return result
 
 
 def _source_result(name, fetcher, now, calendar, deadline):
@@ -645,6 +811,7 @@ def main(now=None):
     try:
         calendar = load_calendar(SOURCE_CALENDAR_PATH)
         boj_policy = load_boj_policy(BOJ_POLICY_PATH)
+        reviewed_boj_as_of = boj_policy["data_as_of"]
         boj_rate = boj_rate_at(boj_policy, now)
     except Exception as exc:  # noqa: BLE001
         status["error_code"] = _error_code(exc)
@@ -681,12 +848,21 @@ def main(now=None):
 
     boj_index_metrics = status["sources"].pop("boj_index", {"status": "failed", "error_code": "boj-index-missing"})
     boj_index_error = errors.pop("boj_index", None)
+    boj_confirmation = (values.get("boj_index") or {}).get("confirmation")
+    if boj_confirmation is not None and not boj_index_error:
+        try:
+            boj_policy = confirmed_boj_policy(boj_policy, boj_confirmation, now)
+            boj_rate = boj_rate_at(boj_policy, now)
+        except QualityError as exc:
+            boj_index_error = exc
     boj_status, next_review = boj_config_state(boj_policy["data_as_of"], now, calendar)
     status["sources"]["boj"] = dict(boj_index_metrics)
     status["sources"]["boj"].update({
         "status": boj_status,
         "data_as_of": boj_policy["data_as_of"],
         "next_review_due": next_review,
+        "verification_mode": "official-guideline-confirmed" if boj_confirmation else "reviewed-policy",
+        "reviewed_policy_as_of": reviewed_boj_as_of,
     })
     if boj_index_error:
         errors["boj"] = boj_index_error
@@ -806,7 +982,7 @@ def main(now=None):
             "fed_upper": upper,
             "fed_source": fed_source,
             "boj": boj_rate,
-            "boj_source": "verified-config",
+            "boj_source": "official-guideline-confirmed" if boj_confirmation else "verified-config",
             **({"boj_announced": boj_policy["rate"], "boj_effective_from": boj_policy["effective_from"]}
                if boj_policy.get("effective_from") else {}),
         },
@@ -846,6 +1022,9 @@ def main(now=None):
                 "next_review_due": next_review,
                 "document_sha256": boj_policy["source_sha256"],
                 "content_sha256": content_sha256(boj_policy),
+                "verification_mode": "official-guideline-confirmed" if boj_confirmation else "reviewed-policy",
+                "reviewed_policy_as_of": reviewed_boj_as_of,
+                **({"policy_confirmation": boj_confirmation} if boj_confirmation else {}),
             },
         },
     }

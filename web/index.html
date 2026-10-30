@@ -136,7 +136,7 @@
       <p><b style="color:var(--text)">CFTC TFF</b> <a href="https://publicreporting.cftc.gov/resource/gpe5-46if.json" rel="noopener noreferrer">TFF Futures Only</a>. La série « leveraged funds » est affichée séparément et n'est jamais fusionnée avec la catégorie Legacy.</p>
       <p><b style="color:var(--text)">BCE</b> <a href="https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html" rel="noopener noreferrer">taux de référence officiels</a>. USD/JPY = JPY par EUR divisé par USD par EUR. Ce fixing quotidien informatif n'est pas un cours temps réel.</p>
       <p><b style="color:var(--text)">Fed</b> cible via les séries officielles FRED <a href="https://fred.stlouisfed.org/series/DFEDTARL" rel="noopener noreferrer">DFEDTARL</a> et <a href="https://fred.stlouisfed.org/series/DFEDTARU" rel="noopener noreferrer">DFEDTARU</a>. Le tableau affiche le milieu de la fourchette.</p>
-      <p><b style="color:var(--text)">BoJ</b> cible configurée avec date et URL de vérification d'après les <a href="https://www.boj.or.jp/en/mopo/mpmdeci/index.htm" rel="noopener noreferrer">décisions officielles</a>. Une configuration trop ancienne dégrade explicitement le statut.</p>
+      <p><b style="color:var(--text)">BoJ</b> cible revue d'après les <a href="https://www.boj.or.jp/en/mopo/mpmdeci/index.htm" rel="noopener noreferrer">décisions officielles</a>. Un taux inchangé peut être confirmé automatiquement par la directive officielle publiée sur le site BoJ, recoupée avec le dernier communiqué daté. Toute variation exige la vérification de sa date d'effet. Le mode de contrôle est indiqué dans la pastille de source.</p>
       <p><b style="color:var(--text)">Notionnel</b> contrats nets × 12 500 000 ¥, convertis avec la référence BCE. Il s'agit du notionnel net de ce futur CME, pas d'une estimation du carry trade mondial. Le score est une heuristique de surveillance.</p>
       <p><b style="color:var(--text)">Spot de marché optionnel</b> une cotation Massive peut compléter la référence BCE. Elle reste séparée, horodatée et récupérée côté serveur; son absence ne dégrade pas le snapshot canonique.</p>
       <p><b style="color:var(--text)">Formule</b> version <code>1.0.0</code>. Pondérations inchangées et explicitement qualifiées d'heuristiques tant qu'un backtest documenté n'a pas validé une nouvelle calibration.</p>
@@ -155,6 +155,6 @@
   </footer>
 
 </div>
-<script src="app.js?v=f07c1ad3b6f9"></script>
+<script src="app.js?v=80cf76df005a"></script>
 </body>
 </html>

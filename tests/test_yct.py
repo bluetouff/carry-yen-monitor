@@ -25,6 +25,12 @@ import yct_quality  # noqa: E402
 FIXED_NOW = datetime(2026, 8, 2, 8, 0, tzinfo=timezone.utc)
 CALENDAR = yct_quality.load_calendar(str(ROOT / "config" / "source-calendars.json"))
 CURRENT_BOJ_POLICY = yct_quality.load_boj_policy(str(ROOT / "config" / "boj-policy.json"))
+SEPTEMBER_BOJ_POLICY = {
+    "schema_version": 2, "rate": 1.25, "previous_rate": 1.0,
+    "data_as_of": "2026-09-18", "effective_from": "2026-09-24",
+    "source_url": "https://www.boj.or.jp/en/mopo/mpmdeci/mpr_2026/k260918a.pdf",
+    "source_sha256": "36d7aa63ff283e25dcc07bc1f6e0caaad8e6764d30cf22433b5c2dd0b6bda391",
+}
 # Historical fixture: contract tests must not depend on the next policy decision.
 BOJ_POLICY = {
     "schema_version": 1, "rate": 1.0, "data_as_of": "2026-07-31",
@@ -120,7 +126,7 @@ def run_paths(directory):
     }
 
 
-def run_successfully(paths, now=FIXED_NOW, cot=None, boj_error=None, fed_error=None):
+def run_successfully(paths, now=FIXED_NOW, cot=None, boj_error=None, fed_error=None, boj_confirmation=None):
     cot = cot or position_rows("legacy")
     with mock.patch.object(build_snapshot, "OUT_PATH", paths["OUT_PATH"]), mock.patch.dict(
         os.environ, paths, clear=False
@@ -136,6 +142,7 @@ def run_successfully(paths, now=FIXED_NOW, cot=None, boj_error=None, fed_error=N
             "latest_statement_date": "2026-07-31",
             "index_url": "https://www.boj.or.jp/en/mopo/mpmdeci/state_2026/index.htm",
             "statement_url": BOJ_POLICY["source_url"],
+            **({"confirmation": boj_confirmation} if boj_confirmation is not None else {}),
         }
     ):
         return build_snapshot.main(now=now)
@@ -287,19 +294,21 @@ class CalendarTests(unittest.TestCase):
 
     def test_versioned_boj_policy_is_the_single_public_contract(self):
         self.assertEqual(CURRENT_BOJ_POLICY["rate"], 1.25)
-        self.assertEqual(CURRENT_BOJ_POLICY["data_as_of"], "2026-09-18")
-        self.assertEqual(CURRENT_BOJ_POLICY["effective_from"], "2026-09-24")
-        self.assertEqual(CURRENT_BOJ_POLICY["previous_rate"], 1.0)
+        self.assertEqual(CURRENT_BOJ_POLICY["data_as_of"], "2026-10-30")
+        self.assertNotIn("effective_from", CURRENT_BOJ_POLICY)
+        self.assertEqual(yct_quality.boj_config_state(
+            CURRENT_BOJ_POLICY["data_as_of"], datetime(2026, 10, 30, 7, tzinfo=timezone.utc), CALENDAR,
+        ), ("verified-config", "2026-12-18"))
         self.assertTrue(CURRENT_BOJ_POLICY["source_url"].startswith("https://www.boj.or.jp/"))
         self.assertEqual(len(CURRENT_BOJ_POLICY["source_sha256"]), 64)
 
     def test_announced_boj_hike_applies_only_on_its_effective_date_in_japan(self):
         before = datetime(2026, 9, 23, 14, 59, 59, tzinfo=timezone.utc)
         after = before + timedelta(seconds=1)
-        self.assertEqual(yct_quality.boj_rate_at(CURRENT_BOJ_POLICY, before), 1.0)
-        self.assertEqual(yct_quality.boj_rate_at(CURRENT_BOJ_POLICY, after), 1.25)
+        self.assertEqual(yct_quality.boj_rate_at(SEPTEMBER_BOJ_POLICY, before), 1.0)
+        self.assertEqual(yct_quality.boj_rate_at(SEPTEMBER_BOJ_POLICY, after), 1.25)
         with self.assertRaises(yct_quality.QualityError):
-            yct_quality.boj_rate_at(CURRENT_BOJ_POLICY, FIXED_NOW)
+            yct_quality.boj_rate_at(SEPTEMBER_BOJ_POLICY, FIXED_NOW)
 
     def test_invalid_boj_transitions_fail_closed(self):
         for changes in ({"previous_rate": None}, {"previous_rate": float("nan")},
@@ -307,7 +316,7 @@ class CalendarTests(unittest.TestCase):
                         {"source_url": "https://www.boj.or.jp@evil.test/decision.pdf"}):
             with self.subTest(changes=changes), tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "policy.json"
-                path.write_text(json.dumps(dict(CURRENT_BOJ_POLICY, **changes)))
+                path.write_text(json.dumps(dict(SEPTEMBER_BOJ_POLICY, **changes)))
                 with self.assertRaises(yct_quality.QualityError):
                     yct_quality.load_boj_policy(str(path))
 

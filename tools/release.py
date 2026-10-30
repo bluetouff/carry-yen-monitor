@@ -28,6 +28,7 @@ SOURCE_FILES = (
     "deploy/yct.l0g.fr.conf",
     "env.example",
     "tests/test_yct.py",
+    "tests/test_boj_confirmation.py",
     "tools/release.py",
     "verify_live.py",
     "verify_snapshot.py",

@@ -33,6 +33,7 @@
     verdictCritical:"Critical risk. Positioning is extreme and yen momentum is adverse to carry. August 2024 remains the reference episode.",
     sourceFresh:"up to date",
     sourceVerified:"verified",
+    bojConfirmed:"unchanged target confirmed by BoJ",
     sourceCached:"cached",
     sourceFallback:"config fallback",
     sourceStale:"review required",
@@ -84,6 +85,7 @@
     verdictCritical:"Risque critique. Positionnement extrême et momentum yen défavorable au carry. Mémoire d'août 2024.",
     sourceFresh:"à jour",
     sourceVerified:"vérifié",
+    bojConfirmed:"taux inchangé confirmé par la BoJ",
     sourceCached:"en cache",
     sourceFallback:"repli config",
     sourceStale:"à revérifier",
@@ -216,7 +218,8 @@
       var good = meta.status === "fresh" || meta.status === "verified-config";
       chip.className = "sourcechip "+(good?"sourceok":"sourcewarn");
       var detail = meta.error_code === "boj-new-decision" ? copy.bojNewDecision :
-        meta.error_code === "boj-source-hash" ? copy.bojDocumentChanged : sourceStatusLabel(meta.status);
+        meta.error_code === "boj-source-hash" ? copy.bojDocumentChanged :
+        good && meta.verification_mode === "official-guideline-confirmed" ? copy.bojConfirmed : sourceStatusLabel(meta.status);
       chip.textContent = def[1]+" · "+detail+(meta.data_as_of?" "+copy.asOf+" "+String(meta.data_as_of).slice(0,10):"");
       if(def[0] === "boj" && state.rates && state.rates.boj_effective_from &&
          state.rates.boj !== state.rates.boj_announced){
