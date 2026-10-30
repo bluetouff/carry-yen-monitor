@@ -7,10 +7,10 @@ from pathlib import Path
 from datetime import datetime, timezone
 from unittest import mock
 
+from test_yct import BOJ_POLICY, FIXED_NOW, run_paths, run_successfully
 import build_snapshot
 import verify_snapshot
 import yct_quality
-from test_yct import BOJ_POLICY, FIXED_NOW, run_paths, run_successfully
 
 
 def confirmation():
