@@ -84,6 +84,17 @@ class ConfirmationTests(unittest.TestCase):
             status = json.loads(Path(paths["STATUS_PATH"]).read_text())
             self.assertEqual(status["sources"]["boj"]["error_code"], "boj-confirmation")
 
+    def test_changed_confirmed_document_is_quarantined(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = run_paths(directory)
+            self.assertEqual(run_successfully(paths, boj_confirmation=confirmation()), 0)
+            original = Path(paths["OUT_PATH"]).read_bytes()
+            changed = dict(confirmation(), source_sha256="b" * 64)
+            self.assertEqual(run_successfully(paths, boj_confirmation=changed), 1)
+            self.assertEqual(Path(paths["OUT_PATH"]).read_bytes(), original)
+            status = json.loads(Path(paths["STATUS_PATH"]).read_text())
+            self.assertEqual(status["sources"]["boj"]["error_code"], "boj-source-hash")
+
 
 class CollectorTests(unittest.TestCase):
     PDF = b"%PDF-1.7 official statement test fixture"
@@ -95,11 +106,12 @@ class CollectorTests(unittest.TestCase):
     <a href='/en/mopo/mpmdeci/state_2026/index.htm'>The Bank will encourage the
     uncollateralized overnight call rate to remain at around 1.0 percent.</a></p></section>"""
 
-    def collect(self, index=None, home=None, now=FIXED_NOW, policy=None):
+    def collect(self, index=None, home=None, now=FIXED_NOW, policy=None, prior_confirmation=None):
         with mock.patch.object(build_snapshot, "http_get_text", side_effect=[
             self.INDEX if index is None else index, self.HOME if home is None else home,
         ]), mock.patch.object(build_snapshot, "http_get", return_value=self.PDF):
-            return build_snapshot.fetch_boj_index(policy=policy or BOJ_POLICY, now=now)
+            return build_snapshot.fetch_boj_index(policy=policy or BOJ_POLICY, now=now,
+                                                 prior_confirmation=prior_confirmation)
 
     def test_official_guideline_confirms_only_unchanged_target(self):
         result = self.collect()
@@ -131,6 +143,16 @@ class CollectorTests(unittest.TestCase):
         for changes in cases:
             with self.subTest(changes=changes), self.assertRaises(yct_quality.QualityError):
                 self.collect(**changes)
+
+    def test_prior_confirmation_survives_news_rotation_but_rechecks_current_target(self):
+        prior = self.collect()["confirmation"]
+        no_news = self.HOME[self.HOME.index("<section"):]
+        result = self.collect(home=no_news, prior_confirmation=prior)
+        self.assertEqual(result["confirmation"], prior)
+        with self.assertRaises(yct_quality.QualityError):
+            self.collect(home=no_news.replace("1.0 percent", "1.25 percent"), prior_confirmation=prior)
+        with self.assertRaises(yct_quality.QualityError):
+            self.collect(home=no_news, prior_confirmation=dict(prior, source_sha256="b" * 64))
 
 
 if __name__ == "__main__":

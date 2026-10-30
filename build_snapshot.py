@@ -34,6 +34,7 @@ from yct_quality import (
     QualityError,
     boj_config_state,
     boj_rate_at,
+    confirmed_boj_policy,
     content_sha256,
     confirmed_boj_policy,
     detect_revisions,
@@ -596,7 +597,7 @@ def _boj_parse_html(document):
     return parser
 
 
-def _boj_confirm_current_guideline(document, latest, policy, now, index_url):
+def _boj_confirm_current_guideline(document, latest, policy, now, index_url, *, allow_previous_evidence=False):
     """Confirm an unchanged current target, never claim to have reviewed a new PDF."""
     parser = _boj_parse_html(document)
     if len(parser.policies) != 1:
@@ -627,16 +628,17 @@ def _boj_confirm_current_guideline(document, latest, policy, now, index_url):
             if not item["closed"] or item["dates"] != [latest["d"]] or any(not entry["closed"] for entry in item["links"]):
                 raise QualityError("boj-new-decision", "nouvelle decision BoJ : date de publication non confirmee")
             dated_links.append(item)
-    if not dated_links:
+    if not dated_links and not allow_previous_evidence:
         raise QualityError("boj-new-decision", "nouvelle decision BoJ : page Guideline anterieure a la publication")
     return rate
 
 
-def fetch_boj_index(client=None, now=None, calendar=None, policy=None):
+def fetch_boj_index(client=None, now=None, calendar=None, policy=None, prior_confirmation=None):
     del calendar
     client = client or HttpClient()
     now = now or utc_now()
     policy = policy or load_boj_policy(BOJ_POLICY_PATH)
+    prior_policy = confirmed_boj_policy(policy, prior_confirmation, now) if prior_confirmation is not None else None
     policy_as_of = policy["data_as_of"]
     policy_source_url = policy["source_url"]
     try:
@@ -673,6 +675,10 @@ def fetch_boj_index(client=None, now=None, calendar=None, policy=None):
     if len(latest_urls) != 1:
         raise QualityError("boj-index-schema", "BoJ : plusieurs decisions concurrentes")
     latest = statements[-1]
+    if prior_policy and latest_date < prior_policy["data_as_of"]:
+        raise QualityError("boj-new-decision", "nouvelle decision BoJ : index anterieur a la derniere confirmation")
+    same_prior_source = bool(prior_policy and prior_policy["data_as_of"] == latest_date
+                             and prior_policy["source_url"] == latest["url"])
     confirmation_rate = None
     if latest_date != policy_as_of:
         canonical_url = "https://www.boj.or.jp/en/mopo/mpmdeci/mpr_%s/k%sa.pdf" % (
@@ -683,11 +689,14 @@ def fetch_boj_index(client=None, now=None, calendar=None, policy=None):
         confirmation_rate = _boj_confirm_current_guideline(
             http_get_text("https://www.boj.or.jp/en/index.htm", client=client), latest, policy, now,
             BOJ_STATEMENTS_URL_TEMPLATE % int(latest_date[:4]),
+            allow_previous_evidence=same_prior_source,
         )
     statement = http_get(latest["url"], client=client)
     raw_statement_sha256 = hashlib.sha256(statement).hexdigest()
     if not statement.startswith(b"%PDF-"):
         raise QualityError("boj-source-format", "decision BoJ non PDF")
+    if same_prior_source and raw_statement_sha256 != prior_policy["source_sha256"]:
+        raise QualityError("boj-source-hash", "empreinte de la decision BoJ confirmee modifiee")
     if confirmation_rate is None and raw_statement_sha256 != policy["source_sha256"]:
         raise QualityError("boj-source-hash", "empreinte de la decision BoJ inattendue")
     result = {
@@ -813,6 +822,9 @@ def main(now=None):
         boj_policy = load_boj_policy(BOJ_POLICY_PATH)
         reviewed_boj_as_of = boj_policy["data_as_of"]
         boj_rate = boj_rate_at(boj_policy, now)
+        prior_confirmation = previous.get("sources", {}).get("boj", {}).get("policy_confirmation")
+        if isinstance(prior_confirmation, dict) and prior_confirmation.get("data_as_of", "") <= reviewed_boj_as_of:
+            prior_confirmation = None
     except Exception as exc:  # noqa: BLE001
         status["error_code"] = _error_code(exc)
         atomic_write(status_path, status)
@@ -825,7 +837,11 @@ def main(now=None):
         "tff": fetch_tff,
         "fx": fetch_fx,
         "fed": fetch_fed_rate,
-        "boj_index": lambda **kwargs: fetch_boj_index(policy=boj_policy, **kwargs),
+        "boj_index": lambda **kwargs: fetch_boj_index(
+            policy=boj_policy,
+            prior_confirmation=prior_confirmation,
+            **kwargs,
+        ),
     }
     if MASSIVE_API_KEY:
         fetchers["massive"] = fetch_massive_quote
@@ -853,6 +869,11 @@ def main(now=None):
         try:
             boj_policy = confirmed_boj_policy(boj_policy, boj_confirmation, now)
             boj_rate = boj_rate_at(boj_policy, now)
+            prior_boj = previous.get("sources", {}).get("boj", {})
+            if (prior_boj.get("data_as_of") == boj_policy["data_as_of"]
+                    and prior_boj.get("source_url") == boj_policy["source_url"]
+                    and prior_boj.get("document_sha256") != boj_policy["source_sha256"]):
+                raise QualityError("boj-source-hash", "document BoJ confirme modifie : revue requise")
         except QualityError as exc:
             boj_index_error = exc
     boj_status, next_review = boj_config_state(boj_policy["data_as_of"], now, calendar)
